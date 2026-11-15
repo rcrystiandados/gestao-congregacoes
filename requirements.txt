@@ -1,5 +1,6 @@
 streamlit
 pandas
 psycopg2-binary
-# opcional: só para mostrar eventos do calendário geral
 gspread
+openpyxl
+reportlab

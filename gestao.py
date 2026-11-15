@@ -543,6 +543,14 @@ def _congregacoes(banco, mapa_congregacoes):
                 st.rerun()
 
 
+def resumo_silencioso():
+    """Indicadores para o painel inicial. Devolve None se o banco não estiver disponível (sem mensagens na tela)."""
+    try:
+        return db.resumo(_obter_banco(st.secrets["database_url"]))
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Ponto de entrada
 # ---------------------------------------------------------------------------
@@ -562,7 +570,7 @@ def renderizar(subpagina, calendario_df, mapa_congregacoes):
             _novo_membro(banco)
         elif subpagina == "Departamentos":
             _departamentos(banco)
-        elif subpagina == "Eventos":
+        elif subpagina in ("Eventos", "Eventos internos"):
             _eventos(banco, calendario_df)
     except ImportError:
         st.error("Falta a biblioteca `psycopg2-binary`. Acrescente-a ao requirements.txt do repositório.")

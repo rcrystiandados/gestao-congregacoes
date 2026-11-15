@@ -1,18 +1,20 @@
-"""Sistema de Gestão das Congregações MEN (site separado do calendário).
+"""Sistema de Gestão MEN (site da liderança, separado do calendário público).
 
-Páginas: visão geral, congregações, membros, novo membro, departamentos e eventos.
+Calendário: choques de agenda, ajuste de datas e exportação.
+Congregações: visão geral, congregações, membros, novo membro, departamentos e eventos internos.
 Segredos necessários (Streamlit Cloud > Settings > Secrets):
     database_url = "postgresql://..."   # banco PostgreSQL na nuvem (Neon)
     senha_gestao = "uma-senha-forte"
-Opcionais (para mostrar os eventos do calendário geral na página Eventos):
+Para a gestão do calendário (choques, ajuste de datas e exportação):
     google_credentials = "..."          # o mesmo usado no site do calendário
-    planilha_url = "https://docs.google.com/spreadsheets/d/..."
+    planilha_url = "https://docs.google.com/spreadsheets/d/..."   # opcional
 """
 import json
 
 import pandas as pd
 import streamlit as st
 
+import agenda
 import gestao
 
 st.set_page_config(
@@ -46,12 +48,19 @@ CONGREGACOES_INICIAIS = {
     ],
 }
 
-PAGINAS = ["Visão geral", "Congregações", "Membros", "Novo membro", "Departamentos", "Eventos"]
+MENU = [
+    ("", ["Painel inicial"]),
+    ("CALENDÁRIO", ["Choques de agenda", "Ajustar datas", "Exportar calendário"]),
+    ("CONGREGAÇÕES", ["Visão geral", "Congregações", "Membros", "Novo membro", "Departamentos",
+                      "Eventos internos"]),
+]
+PAGINAS = [p for _, itens in MENU for p in itens]
+PAGINAS_CALENDARIO = ("Choques de agenda", "Ajustar datas", "Exportar calendário")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 if "pagina" not in st.session_state:
-    st.session_state["pagina"] = "Visão geral"
+    st.session_state["pagina"] = "Painel inicial"
 
 ESTILO = """<style>
     :root {
@@ -263,27 +272,6 @@ ESTILO = """<style>
 st.markdown(ESTILO, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=120)
-def carregar_calendario():
-    """Eventos do calendário geral (opcional). Devolve None se não houver acesso à planilha."""
-    try:
-        import gspread
-        gc = gspread.service_account_from_dict(json.loads(st.secrets["google_credentials"]))
-        aba = gc.open_by_url(st.secrets["planilha_url"]).get_worksheet(0)
-        valores = aba.get_all_values()
-        if len(valores) < 2:
-            return pd.DataFrame()
-        cab = [c.strip() for c in valores[0]]
-        linhas = [(list(l) + [""] * len(cab))[:len(cab)] for l in valores[1:] if any(str(c).strip() for c in l)]
-        df = pd.DataFrame(linhas, columns=cab)
-        colunas_cong = [c for c in df.columns if "Congregação -" in c]
-        if colunas_cong:
-            df["Congregação"] = df[colunas_cong].astype(str).agg("".join, axis=1)
-        return df
-    except Exception:
-        return None
-
-
 def tela_login():
     _, centro, _ = st.columns([1, 1.6, 1])
     with centro:
@@ -305,6 +293,72 @@ def tela_login():
                 st.error("Senha incorreta. Tente novamente.")
 
 
+def painel_inicial():
+    """Página inicial: blocos com atalho para cada área."""
+    df, n_eventos, n_choques, n_remarcar = None, None, None, None
+    try:
+        df = agenda.carregar_calendario()
+        n_eventos = len(df)
+        n_choques, n_remarcar = agenda.contar_choques(df)
+    except Exception:
+        pass
+    r = gestao.resumo_silencioso()
+
+    verde, vermelho, azul = "#2E7D5B", "#C0392B", "#1E3A8A"
+
+    def cor(n):
+        return azul if n is None else (vermelho if n else verde)
+
+    def val(n):
+        return "—" if n is None else n
+
+    grupos = [
+        ("Calendário", [
+            ("Choques de agenda", "Choques de agenda", val(n_choques), "choque(s) detectado(s)",
+             "Veja quais eventos se sobrepõem e qual deve ser remanejado.", cor(n_choques)),
+            ("Ajustar datas", "Ajustar datas", val(n_remarcar), "evento(s) para remarcar",
+             "Remarque um evento com sugestões de datas livres e sem feriados.", cor(n_remarcar)),
+            ("Exportar calendário", "Exportar calendário", val(n_eventos), "evento(s) no calendário",
+             "Baixe o calendário em PDF ou Excel, completo ou por região, com contatos.", azul),
+        ]),
+        ("Congregações", [
+            ("Visão geral", "Visão geral", val(r["membros_ativos"] if r else None), "membros ativos",
+             "Indicadores, membros por congregação e aniversariantes.", azul),
+            ("Congregações", "Congregações", val(r["congregacoes"] if r else None), "congregações",
+             "Cadastre e consulte as congregações de cada região.", azul),
+            ("Membros", "Membros", val(r["membros_ativos"] if r else None), "membros ativos",
+             "Lista, busca, edição e exclusão de membros.", azul),
+            ("Novo membro", "Novo membro", "+", "inclusão",
+             "Inclua um novo membro e vincule aos departamentos.", azul),
+            ("Departamentos", "Departamentos", val(r["departamentos"] if r else None), "departamentos",
+             "Departamentos, líderes e integrantes de cada congregação.", azul),
+            ("Eventos internos", "Eventos internos", "Ver", "reuniões e ensaios",
+             "Eventos internos de cada congregação e eventos do calendário geral.", azul),
+        ]),
+    ]
+    for titulo, blocos in grupos:
+        st.markdown(f"#### {titulo}")
+        for i in range(0, len(blocos), 3):
+            colunas = st.columns(3)
+            for coluna, (rotulo, destino, numero, legenda, descricao, cor_num) in zip(colunas, blocos[i:i + 3]):
+                with coluna:
+                    with st.container(border=True):
+                        st.markdown(
+                            f'<div class="adm-card"><div class="adm-tit">{rotulo}</div>'
+                            f'<div class="adm-num" style="color:{cor_num}">{numero}</div>'
+                            f'<div class="adm-lbl">{legenda}</div>'
+                            f'<div class="adm-desc">{descricao}</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        if st.button("Abrir", key=f"painel_{destino}", use_container_width=True):
+                            st.session_state["pagina"] = destino
+                            st.rerun()
+    if df is None:
+        st.caption("Não foi possível ler o calendário agora. Confira os segredos google_credentials e planilha_url.")
+    if r is None:
+        st.caption("Não foi possível ler o banco de dados agora. Confira o segredo database_url.")
+
+
 # ---------------------------------------------------------------------------
 # Menu lateral
 # ---------------------------------------------------------------------------
@@ -316,12 +370,15 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     if st.session_state["logado"]:
-        for nome in PAGINAS:
-            ativa = st.session_state["pagina"] == nome
-            if st.button(nome, key=f"menu_{nome}", type="primary" if ativa else "secondary",
-                         use_container_width=True):
-                st.session_state["pagina"] = nome
-                st.rerun()
+        for grupo, itens in MENU:
+            if grupo:
+                st.markdown(f'<div class="sb-grupo">{grupo}</div>', unsafe_allow_html=True)
+            for nome in itens:
+                ativa = st.session_state["pagina"] == nome
+                if st.button(nome, key=f"menu_{nome}", type="primary" if ativa else "secondary",
+                             use_container_width=True):
+                    st.session_state["pagina"] = nome
+                    st.rerun()
     st.markdown("---")
     st.markdown(
         '<div class="sb-contato">Desenvolvido por <b>Rodolfo Crystian</b><br>'
@@ -348,5 +405,25 @@ else:
         st.rerun()
     st.markdown('<hr class="linha-titulo">', unsafe_allow_html=True)
 
-    calendario = carregar_calendario() if st.session_state["pagina"] == "Eventos" else None
-    gestao.renderizar(st.session_state["pagina"], calendario, CONGREGACOES_INICIAIS)
+    pagina = st.session_state["pagina"]
+    calendario = None
+    if pagina in PAGINAS_CALENDARIO or pagina == "Eventos internos":
+        try:
+            calendario = agenda.carregar_calendario()
+        except Exception as erro:
+            if pagina in PAGINAS_CALENDARIO:
+                st.error(f"Não foi possível ler a planilha do calendário: {erro}")
+
+    if pagina == "Painel inicial":
+        painel_inicial()
+    elif pagina in PAGINAS_CALENDARIO:
+        if calendario is not None:
+            if pagina == "Choques de agenda":
+                agenda.painel_choques(calendario)
+            elif pagina == "Ajustar datas":
+                agenda.painel_ajuste_datas(calendario)
+            else:
+                st.caption("Na gestão, a exportação inclui cargo e WhatsApp dos responsáveis.")
+                agenda.bloco_exportacao(calendario, "adm", incluir_contato=True)
+    else:
+        gestao.renderizar(pagina, calendario, CONGREGACOES_INICIAIS)
