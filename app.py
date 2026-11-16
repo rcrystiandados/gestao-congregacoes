@@ -53,7 +53,7 @@ CONGREGACOES_INICIAIS = {
 
 MENU = [
     ("", ["Painel inicial"]),
-    ("CALENDÁRIO", ["Choques de agenda", "Ajustar datas", "Exportar calendário"]),
+    ("CALENDÁRIO", ["Agenda", "Ajustar datas", "Exportar calendário"]),
     ("CONGREGAÇÕES", ["Visão geral", "Congregações", "Membros", "Novo membro", "Departamentos",
                       "Eventos internos"]),
 ]
@@ -64,7 +64,7 @@ def menu_do_usuario():
     conta = ["Minha conta"] + (["Usuários"] if autenticacao.usuario_atual().get("perfil") == "admin" else [])
     return MENU + [("CONTA", conta)]
 
-PAGINAS_CALENDARIO = ("Choques de agenda", "Ajustar datas", "Exportar calendário")
+PAGINAS_CALENDARIO = ("Agenda", "Ajustar datas", "Exportar calendário")
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
@@ -305,8 +305,8 @@ def painel_inicial():
 
     grupos = [
         ("Calendário", [
-            ("Choques de agenda", "Choques de agenda", val(n_choques), "choque(s) detectado(s)",
-             "Veja quais eventos se sobrepõem e qual deve ser remanejado.", cor(n_choques)),
+            ("Agenda", "Agenda", val(n_choques), "choque(s) detectado(s)",
+             "Veja os choques de datas e a lista de todos os eventos do calendário.", cor(n_choques)),
             ("Ajustar datas", "Ajustar datas", val(n_remarcar), "evento(s) para remarcar",
              "Remarque um evento com sugestões de datas livres e sem feriados.", cor(n_remarcar)),
             ("Exportar calendário", "Exportar calendário", val(n_eventos), "evento(s) no calendário",
@@ -417,7 +417,7 @@ else:
         autenticacao.pagina_usuarios()
     elif pagina in PAGINAS_CALENDARIO:
         if calendario is not None:
-            if pagina == "Choques de agenda":
+            if pagina == "Agenda":
                 agenda.painel_choques(calendario)
             elif pagina == "Ajustar datas":
                 agenda.painel_ajuste_datas(calendario)

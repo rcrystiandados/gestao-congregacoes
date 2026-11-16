@@ -230,14 +230,75 @@ def _cartao_evento(r, remanejar=False):
             f"Período atual: **{fmt_periodo(r['ini'].date(), r['fim'].date())}**"
         )
 
+CSS_AJUSTE = """<style>
+    span.aj-marca {display: none;}
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.aj-p1) {
+        background: #FDECEA !important; border: 2px solid #C0392B !important; border-radius: 10px;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.aj-p2) {
+        background: #FFF6DD !important; border: 2px solid #D69E2E !important; border-radius: 10px;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.aj-p3) {
+        background: #E6F4EC !important; border: 2px solid #2E7D5B !important; border-radius: 10px;
+    }
+    .aj-legenda {font-size: .85rem; color: #475569; margin: .2rem 0 .8rem 0;}
+    .aj-legenda b.p1 {color: #C0392B;} .aj-legenda b.p2 {color: #B7791F;} .aj-legenda b.p3 {color: #2E7D5B;}
+</style>"""
+
+
+def _cartao_ajuste(r, regs, deve_remarcar):
+    """Cartão do evento, colorido pela prioridade, com a opção de remarcar e as 2 sugestões."""
+    selecionado = st.session_state.get("aj_alvo") == r["linha"]
+    with st.container(border=True):
+        st.markdown(f'<span class="aj-marca aj-p{r["peso"]}"></span>', unsafe_allow_html=True)
+        if deve_remarcar:
+            st.markdown(":red[**Deve ser remarcado**]")
+        st.markdown(
+            f"**{r['nome']}**  \n{r['tipo']} · prioridade **{NOME_PRIORIDADE[r['peso']].lower()}**  \n"
+            f"{r['congregacao'] or '-'} · {r['regiao']}  \n"
+            f"Período atual: **{fmt_periodo(r['ini'].date(), r['fim'].date())}**"
+        )
+        if not selecionado:
+            if st.button("Remarcar este evento", key=f"aj_rem_{r['linha']}", use_container_width=True):
+                st.session_state["aj_alvo"] = r["linha"]
+                st.session_state.pop("aj_confirmar", None)
+                st.session_state["aj_pendente"] = (r["ini"].date(), r["fim"].date())
+                st.rerun()
+            return
+
+        st.markdown("**Datas sugeridas**")
+        sugestoes = sugerir_datas(r, regs, limite=2)
+        if not sugestoes:
+            sugestoes = sugerir_datas(r, regs, mesmo_dia_semana=False, limite=2)
+            if sugestoes:
+                st.caption("Não há datas livres no mesmo dia da semana; estas são de outros dias.")
+        if not sugestoes:
+            st.info("Não encontrei datas livres neste ano. Escolha a data manualmente.")
+        for i, sg in enumerate(sugestoes):
+            dias = abs(sg["delta"])
+            quando = f"{dias} dia(s) {'depois' if sg['delta'] > 0 else 'antes'} · sem choque na região e sem feriados"
+            c1, c2 = st.columns([3, 1.3], vertical_alignment="center")
+            c1.markdown(f"**{fmt_periodo(sg['ini'].date(), sg['fim'].date())}**")
+            c1.caption(quando)
+            if c2.button("Escolher", key=f"aj_sug_{r['linha']}_{i}", use_container_width=True):
+                st.session_state["aj_pendente"] = (sg["ini"].date(), sg["fim"].date())
+                st.session_state["aj_confirmar"] = r["linha"]
+                st.rerun()
+        if st.button("Escolher outra data", key=f"aj_outra_{r['linha']}", use_container_width=True):
+            st.session_state["aj_pendente"] = (r["ini"].date(), r["fim"].date())
+            st.session_state["aj_confirmar"] = r["linha"]
+            st.rerun()
+
+
 def painel_ajuste_datas(df_base):
+    st.markdown(CSS_AJUSTE, unsafe_allow_html=True)
     regs = registros_da_planilha(df_base)
     regs = [r for r in regs if r["linha"] is not None]
     if not regs:
         st.info("Não há eventos cadastrados para ajustar.")
         return
 
-    # aplica a data escolhida nas sugestões (antes de criar os campos de data)
+    # aplica a data escolhida (antes de criar os campos de data)
     pend = st.session_state.pop("aj_pendente", None)
     if pend:
         st.session_state["aj_ini"], st.session_state["aj_fim"] = pend
@@ -246,98 +307,60 @@ def painel_ajuste_datas(df_base):
         st.success(msg)
 
     pares = todos_os_choques(regs)
-
-    # ---------------- 1. escolha do evento em choque ----------------
     st.markdown("#### 1. Escolha o evento")
-    ver_todos = False
     if not pares:
         st.success("A agenda está limpa. Nenhum choque detectado.")
-        ver_todos = st.checkbox("Ajustar mesmo assim a data de um evento", key="aj_todos")
-        if not ver_todos:
-            return
+        return
+
+    pares = sorted(pares, key=lambda p: (max(p[0]["ini"], p[1]["ini"]), p[0]["nome"]))
+    por_id = {(a_["linha"], b_["linha"]): (a_, b_, m) for a_, b_, m in pares}
+
+    def rotulo_par(chave):
+        a_, b_, _m = por_id[chave]
+        return f"{max(a_['ini'], b_['ini']):%d/%m/%Y} - {a_['nome']}  ×  {b_['nome']}"
+
+    chave = st.selectbox("Evento em choque", list(por_id.keys()), format_func=rotulo_par, key="aj_choque")
+    a_, b_, motivo_choque = por_id[chave]
+
+    # ao trocar de choque, limpa a escolha anterior
+    if st.session_state.get("aj_par") != chave:
+        st.session_state["aj_par"] = chave
+        st.session_state.pop("aj_alvo", None)
+        st.session_state.pop("aj_confirmar", None)
+    if st.session_state.get("aj_alvo") not in (a_["linha"], b_["linha"]):
+        st.session_state.pop("aj_alvo", None)
+        st.session_state.pop("aj_confirmar", None)
+
+    # quem deve ser remarcado: o de menor prioridade (maior número); empate, a liderança escolhe
+    if a_["peso"] > b_["peso"]:
+        sugerido = 0
+    elif b_["peso"] > a_["peso"]:
+        sugerido = 1
     else:
-        ver_todos = st.checkbox("Ver todos os eventos (inclusive sem choque)", key="aj_todos")
+        sugerido = None
 
-    if not ver_todos:
-        pares = sorted(pares, key=lambda p: (max(p[0]["ini"], p[1]["ini"]), p[0]["nome"]))
-        por_id = {(a_["linha"], b_["linha"]): (a_, b_, m) for a_, b_, m in pares}
+    st.caption(f"Choque: {motivo_choque.lower()}. Escolha, em um dos cartões, o evento que será remarcado.")
+    st.markdown(
+        '<div class="aj-legenda">Cor do cartão = prioridade: <b class="p1">vermelho</b> alta · '
+        '<b class="p2">amarelo</b> média · <b class="p3">verde</b> baixa</div>', unsafe_allow_html=True)
+    if sugerido is None:
+        st.info("Os dois eventos têm a mesma prioridade: a liderança define qual será remarcado.")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        _cartao_ajuste(a_, regs, deve_remarcar=sugerido == 0)
+    with col_b:
+        _cartao_ajuste(b_, regs, deve_remarcar=sugerido == 1)
 
-        def rotulo_par(chave):
-            a_, b_, _m = por_id[chave]
-            return f"{max(a_['ini'], b_['ini']):%d/%m/%Y} - {a_['nome']}  ×  {b_['nome']}"
-
-        chave = st.selectbox("Evento em choque", list(por_id.keys()), format_func=rotulo_par,
-                             key="aj_choque")
-        a_, b_, motivo_choque = por_id[chave]
-        # quem deve ser remarcado: o de menor prioridade (maior número); empate, a liderança escolhe
-        if a_["peso"] > b_["peso"]:
-            sugerido = 0
-        elif b_["peso"] > a_["peso"]:
-            sugerido = 1
-        else:
-            sugerido = None
-
-        st.caption(f"Choque: {motivo_choque.lower()}. Abaixo estão os dois eventos envolvidos.")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            _cartao_evento(a_, remanejar=sugerido == 0)
-        with col_b:
-            _cartao_evento(b_, remanejar=sugerido == 1)
-
-        opcoes = [0, 1]
-        nomes = {0: a_["nome"], 1: b_["nome"]}
-        if sugerido is None:
-            st.info("Os dois eventos têm a mesma prioridade: a liderança define qual será remarcado.")
-        escolha = st.radio("Qual evento será remarcado?", opcoes, format_func=lambda i: nomes[i],
-                           index=sugerido if sugerido is not None else 0, horizontal=True,
-                           key=f"aj_alvo_{chave[0]}_{chave[1]}")
-        alvo = (a_, b_)[escolha]
-    else:
-        lista = sorted(regs, key=lambda r: (r["ini"], r["nome"]))
-        por_linha = {r["linha"]: r for r in lista}
-
-        def rotulo(linha):
-            r = por_linha[linha]
-            local = " · ".join(x for x in (r["congregacao"], r["regiao"]) if x)
-            return f"{r['ini']:%d/%m/%Y} - {r['nome']} · {local}"
-
-        escolhido = st.selectbox("Evento", list(por_linha.keys()), format_func=rotulo, key="aj_evento")
-        alvo = por_linha[escolhido]
-        _cartao_evento(alvo)
-
+    # ---------------- 2. confirmação (só depois de escolher uma data) ----------------
+    alvo = next((r for r in (a_, b_) if r["linha"] == st.session_state.get("aj_alvo")), None)
+    if alvo is None or st.session_state.get("aj_confirmar") != alvo["linha"]:
+        return
     outros = [r for r in regs if r["linha"] != alvo["linha"]]
+    if "aj_ini" not in st.session_state or "aj_fim" not in st.session_state:
+        st.session_state["aj_ini"], st.session_state["aj_fim"] = alvo["ini"].date(), alvo["fim"].date()
 
-    # ao trocar de evento, reinicia os campos de data
-    if (st.session_state.get("aj_ultimo") != alvo["linha"]
-            or "aj_ini" not in st.session_state or "aj_fim" not in st.session_state):
-        st.session_state["aj_ultimo"] = alvo["linha"]
-        st.session_state["aj_ini"] = alvo["ini"].date()
-        st.session_state["aj_fim"] = alvo["fim"].date()
-
-    # ---------------- 2. datas sugeridas ----------------
-    st.markdown("#### 2. Datas sugeridas")
-    st.caption("Regra: não pode haver choque dentro da mesma região, mas pode haver choque com "
-               "eventos de outras regiões.")
-    o1, o2 = st.columns(2)
-    evitar = o1.checkbox("Evitar feriados e pontos facultativos", value=True, key="aj_feriados")
-    manter = o2.checkbox("Manter o mesmo dia da semana", value=True, key="aj_semana")
-    sugestoes = sugerir_datas(alvo, regs, evitar_feriados=evitar, mesmo_dia_semana=manter)
-    if not sugestoes:
-        st.info("Não encontrei datas livres neste ano com essas opções. Tente desmarcar uma delas "
-                "ou escolha a data manualmente abaixo.")
-    for i, sg in enumerate(sugestoes):
-        dias = abs(sg["delta"])
-        quando = f"{dias} dia(s) {'depois' if sg['delta'] > 0 else 'antes'}"
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([5, 2, 1.4], vertical_alignment="center")
-            c1.markdown(f"**{fmt_periodo(sg['ini'].date(), sg['fim'].date())}**")
-            c2.caption(f"{quando} · sem choques na região" + (" e sem feriados" if evitar else ""))
-            if c3.button("Escolher", key=f"aj_sug_{i}", use_container_width=True):
-                st.session_state["aj_pendente"] = (sg["ini"].date(), sg["fim"].date())
-                st.rerun()
-
-    # ---------------- 3. confirmação / ajuste manual ----------------
-    st.markdown("#### 3. Confirme a nova data")
+    st.markdown("#### 2. Confirme a nova data")
+    st.caption(f"Remarcando: **{alvo['nome']}**")
     d1, d2 = st.columns(2)
     novo_ini = d1.date_input("Nova data de início", format="DD/MM/YYYY", key="aj_ini")
     if st.session_state.get("aj_fim") is None or st.session_state["aj_fim"] < novo_ini:
@@ -370,7 +393,8 @@ def painel_ajuste_datas(df_base):
             st.error(f"Não foi possível salvar: {erro}")
         else:
             st.cache_data.clear()
-            st.session_state.pop("aj_ultimo", None)
+            st.session_state.pop("aj_alvo", None)
+            st.session_state.pop("aj_confirmar", None)
             st.session_state["aj_msg"] = (
                 f"Datas de \"{alvo['nome']}\" atualizadas para {fmt_periodo(novo_ini, novo_fim)}."
             )
@@ -501,7 +525,7 @@ def carregar_calendario():
 
 
 def painel_choques(df_base):
-    """Lista os pares de eventos em choque e qual deve ser remanejado."""
+    """Página Agenda: pares de eventos em choque (e qual remanejar) e a lista de todos os eventos."""
     if df_base is None or df_base.empty:
         st.info("Ainda não há eventos no calendário.")
         return
@@ -526,6 +550,20 @@ def painel_choques(df_base):
                 "livres na região e evita feriados.")
     else:
         st.success("A agenda está limpa. Nenhum choque detectado.")
+    st.markdown("#### Todos os eventos")
+    regs = registros_da_planilha(df_base)
+    em_choque = {x["linha"] for a_, b_, _m in pares for x in (a_, b_)}
+    if regs:
+        regs = sorted(regs, key=lambda r: (r["ini"], r["nome"]))
+        st.caption(f"{len(regs)} evento(s) no calendário, em ordem de data.")
+        st.dataframe(pd.DataFrame([{
+            "Início": r["ini"].strftime("%d/%m/%Y"), "Fim": r["fim"].strftime("%d/%m/%Y"),
+            "Evento": r["nome"], "Tipo": r["tipo"], "Prioridade": NOME_PRIORIDADE[r["peso"]],
+            "Congregação": r["congregacao"], "Região": r["regiao"],
+            "Choque": "Sim" if r["linha"] in em_choque else "—",
+        } for r in regs]), use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhum evento com data válida no calendário.")
     st.link_button("Abrir planilha do banco de dados", PLANILHA_URL)
 
 
