@@ -4,7 +4,9 @@ Calendário: choques de agenda, ajuste de datas e exportação.
 Congregações: visão geral, congregações, membros, novo membro, departamentos e eventos internos.
 Segredos necessários (Streamlit Cloud > Settings > Secrets):
     database_url = "postgresql://..."   # banco PostgreSQL na nuvem (Neon)
-    senha_gestao = "uma-senha-forte"
+    codigo_convite = "codigo-da-lideranca"   # exigido para criar uma conta individual
+    senha_gestao = "senha-provisoria"        # só vale enquanto o banco não estiver configurado
+Opcionais, para redefinir a senha por e-mail: smtp_usuario, smtp_senha (veja autenticacao.py)
 Para a gestão do calendário (choques, ajuste de datas e exportação):
     google_credentials = "..."          # o mesmo usado no site do calendário
     planilha_url = "https://docs.google.com/spreadsheets/d/..."   # opcional
@@ -15,6 +17,7 @@ import pandas as pd
 import streamlit as st
 
 import agenda
+import autenticacao
 import gestao
 
 st.set_page_config(
@@ -55,6 +58,12 @@ MENU = [
                       "Eventos internos"]),
 ]
 PAGINAS = [p for _, itens in MENU for p in itens]
+
+
+def menu_do_usuario():
+    conta = ["Minha conta"] + (["Usuários"] if autenticacao.usuario_atual().get("perfil") == "admin" else [])
+    return MENU + [("CONTA", conta)]
+
 PAGINAS_CALENDARIO = ("Choques de agenda", "Ajustar datas", "Exportar calendário")
 
 if "logado" not in st.session_state:
@@ -267,30 +276,12 @@ ESTILO = """<style>
     .adm-num {font-size: 2.6rem; font-weight: 700; line-height: 1;}
     .adm-lbl {font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #64748B; margin: .2rem 0 .6rem 0;}
     .adm-desc {font-size: .92rem; color: #475569; min-height: 2.6rem;}
+    .sb-grupo {font-size: .72rem; letter-spacing: .1em; font-weight: 700; opacity: .7;
+               margin: 1rem 0 .25rem .5rem;}
+    .sb-usuario {font-size: .9rem; margin: .2rem 0 .4rem .5rem; opacity: .9;}
 </style>
 """
 st.markdown(ESTILO, unsafe_allow_html=True)
-
-
-def tela_login():
-    _, centro, _ = st.columns([1, 1.6, 1])
-    with centro:
-        st.markdown(
-            '<div class="login-topo"><div class="login-icone">🔒</div>'
-            '<h2>Gestão das congregações</h2>'
-            '<p>Acesso restrito à liderança. Informe a senha para continuar.</p></div>',
-            unsafe_allow_html=True,
-        )
-        with st.form("form_login"):
-            senha = st.text_input("Senha", type="password", placeholder="Digite a senha")
-            entrar = st.form_submit_button("Entrar", use_container_width=True)
-        if entrar:
-            if "senha_gestao" in st.secrets and senha == st.secrets["senha_gestao"]:
-                st.session_state["logado"] = True
-                st.session_state["msg_login"] = True
-                st.rerun()
-            else:
-                st.error("Senha incorreta. Tente novamente.")
 
 
 def painel_inicial():
@@ -370,7 +361,9 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     if st.session_state["logado"]:
-        for grupo, itens in MENU:
+        st.markdown(f'<div class="sb-usuario">Olá, <b>{autenticacao.usuario_atual().get("nome", "")}</b></div>',
+                    unsafe_allow_html=True)
+        for grupo, itens in menu_do_usuario():
             if grupo:
                 st.markdown(f'<div class="sb-grupo">{grupo}</div>', unsafe_allow_html=True)
             for nome in itens:
@@ -390,7 +383,9 @@ with st.sidebar:
 # Conteúdo
 # ---------------------------------------------------------------------------
 if not st.session_state["logado"]:
-    tela_login()
+    autenticacao.tela_acesso()
+elif st.session_state.get("trocar_senha_obrigatoria"):
+    autenticacao.tela_troca_obrigatoria()
 else:
     if st.session_state.pop("msg_login", False):
         try:
@@ -401,7 +396,7 @@ else:
     t1, t2 = st.columns([5, 1], vertical_alignment="center")
     t1.markdown(f'<h1 class="titulo-sem-linha">{st.session_state["pagina"]}</h1>', unsafe_allow_html=True)
     if t2.button("Sair", use_container_width=True):
-        st.session_state["logado"] = False
+        autenticacao.sair()
         st.rerun()
     st.markdown('<hr class="linha-titulo">', unsafe_allow_html=True)
 
@@ -416,6 +411,10 @@ else:
 
     if pagina == "Painel inicial":
         painel_inicial()
+    elif pagina == "Minha conta":
+        autenticacao.pagina_minha_conta()
+    elif pagina == "Usuários":
+        autenticacao.pagina_usuarios()
     elif pagina in PAGINAS_CALENDARIO:
         if calendario is not None:
             if pagina == "Choques de agenda":
