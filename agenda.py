@@ -88,11 +88,10 @@ def registros_da_planilha(df_base):
 def motivo_do_choque(a, b):
     if not (a["ini"] <= b["fim"] and b["ini"] <= a["fim"]):
         return None
+    # Regra: não pode haver choque dentro da mesma região; entre regiões diferentes pode.
     ra, rb = _norm(a["regiao"]), _norm(b["regiao"])
     if ra and ra == rb:
         return "Mesma região"
-    if a["peso"] == 1 or b["peso"] == 1:
-        return "Aniversário de congregação"
     return None
 
 def choques_do_novo(novo, base):
@@ -166,7 +165,7 @@ def fmt_periodo(ini, fim):
 
 def sugerir_datas(alvo, todos, evitar_feriados=True, mesmo_dia_semana=True, limite=6, janela=180):
     """Datas livres, com a mesma duração do evento, mais próximas da data original.
-    Respeita as regras de choque da região, os aniversários de congregação e os feriados."""
+    Respeita a regra de choque da região (outras regiões podem coincidir) e os feriados."""
     duracao = alvo["fim"] - alvo["ini"]
     hoje = pd.Timestamp.today().normalize()
     outros = [r for r in todos if r.get("linha") != alvo.get("linha")]
@@ -220,6 +219,17 @@ def atualizar_datas_planilha(alvo, novo_ini, novo_fim, motivo):
         ini_antigo, fim_antigo, novo_ini.strftime("%d/%m/%Y"), novo_fim.strftime("%d/%m/%Y"), motivo,
     ], value_input_option="RAW")
 
+def _cartao_evento(r, remanejar=False):
+    """Cartão com os dados de um evento (usado nos dois lados do choque)."""
+    with st.container(border=True):
+        if remanejar:
+            st.markdown(":red[**Deve ser remarcado**]")
+        st.markdown(
+            f"**{r['nome']}**  \n{r['tipo']} · prioridade **{NOME_PRIORIDADE[r['peso']].lower()}**  \n"
+            f"{r['congregacao'] or '-'} · {r['regiao']}  \n"
+            f"Período atual: **{fmt_periodo(r['ini'].date(), r['fim'].date())}**"
+        )
+
 def painel_ajuste_datas(df_base):
     regs = registros_da_planilha(df_base)
     regs = [r for r in regs if r["linha"] is not None]
@@ -236,49 +246,78 @@ def painel_ajuste_datas(df_base):
         st.success(msg)
 
     pares = todos_os_choques(regs)
-    em_choque = {x["linha"] for a_, b_, _m in pares for x in (a_, b_)}
 
+    # ---------------- 1. escolha do evento em choque ----------------
     st.markdown("#### 1. Escolha o evento")
-    so_choques = st.checkbox("Mostrar apenas eventos com choque de data", value=bool(em_choque),
-                             key="aj_so_choques", disabled=not em_choque)
-    lista = [r for r in regs if (r["linha"] in em_choque or not so_choques)]
-    lista.sort(key=lambda r: (r["ini"], r["nome"]))
-    if not lista:
-        st.info("Nenhum evento para mostrar.")
-        return
-    por_linha = {r["linha"]: r for r in lista}
+    ver_todos = False
+    if not pares:
+        st.success("A agenda está limpa. Nenhum choque detectado.")
+        ver_todos = st.checkbox("Ajustar mesmo assim a data de um evento", key="aj_todos")
+        if not ver_todos:
+            return
+    else:
+        ver_todos = st.checkbox("Ver todos os eventos (inclusive sem choque)", key="aj_todos")
 
-    def rotulo(linha):
-        r = por_linha[linha]
-        marca = "  [CHOQUE]" if linha in em_choque else ""
-        local = " · ".join(x for x in (r["congregacao"], r["regiao"]) if x)
-        return f"{r['ini']:%d/%m/%Y} · {r['nome']} · {local}{marca}"
+    if not ver_todos:
+        pares = sorted(pares, key=lambda p: (max(p[0]["ini"], p[1]["ini"]), p[0]["nome"]))
+        por_id = {(a_["linha"], b_["linha"]): (a_, b_, m) for a_, b_, m in pares}
 
-    escolhido = st.selectbox("Evento", list(por_linha.keys()), format_func=rotulo, key="aj_evento")
-    alvo = por_linha[escolhido]
+        def rotulo_par(chave):
+            a_, b_, _m = por_id[chave]
+            return f"{max(a_['ini'], b_['ini']):%d/%m/%Y} - {a_['nome']}  ×  {b_['nome']}"
+
+        chave = st.selectbox("Evento em choque", list(por_id.keys()), format_func=rotulo_par,
+                             key="aj_choque")
+        a_, b_, motivo_choque = por_id[chave]
+        # quem deve ser remarcado: o de menor prioridade (maior número); empate, a liderança escolhe
+        if a_["peso"] > b_["peso"]:
+            sugerido = 0
+        elif b_["peso"] > a_["peso"]:
+            sugerido = 1
+        else:
+            sugerido = None
+
+        st.caption(f"Choque: {motivo_choque.lower()}. Abaixo estão os dois eventos envolvidos.")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            _cartao_evento(a_, remanejar=sugerido == 0)
+        with col_b:
+            _cartao_evento(b_, remanejar=sugerido == 1)
+
+        opcoes = [0, 1]
+        nomes = {0: a_["nome"], 1: b_["nome"]}
+        if sugerido is None:
+            st.info("Os dois eventos têm a mesma prioridade: a liderança define qual será remarcado.")
+        escolha = st.radio("Qual evento será remarcado?", opcoes, format_func=lambda i: nomes[i],
+                           index=sugerido if sugerido is not None else 0, horizontal=True,
+                           key=f"aj_alvo_{chave[0]}_{chave[1]}")
+        alvo = (a_, b_)[escolha]
+    else:
+        lista = sorted(regs, key=lambda r: (r["ini"], r["nome"]))
+        por_linha = {r["linha"]: r for r in lista}
+
+        def rotulo(linha):
+            r = por_linha[linha]
+            local = " · ".join(x for x in (r["congregacao"], r["regiao"]) if x)
+            return f"{r['ini']:%d/%m/%Y} - {r['nome']} · {local}"
+
+        escolhido = st.selectbox("Evento", list(por_linha.keys()), format_func=rotulo, key="aj_evento")
+        alvo = por_linha[escolhido]
+        _cartao_evento(alvo)
+
     outros = [r for r in regs if r["linha"] != alvo["linha"]]
 
-    if (st.session_state.get("aj_ultimo") != escolhido
+    # ao trocar de evento, reinicia os campos de data
+    if (st.session_state.get("aj_ultimo") != alvo["linha"]
             or "aj_ini" not in st.session_state or "aj_fim" not in st.session_state):
-        st.session_state["aj_ultimo"] = escolhido
+        st.session_state["aj_ultimo"] = alvo["linha"]
         st.session_state["aj_ini"] = alvo["ini"].date()
         st.session_state["aj_fim"] = alvo["fim"].date()
 
-    with st.container(border=True):
-        st.markdown(
-            f"**{alvo['nome']}**  \n{alvo['tipo']} · prioridade **{NOME_PRIORIDADE[alvo['peso']].lower()}**  \n"
-            f"{alvo['congregacao'] or '-'} · {alvo['regiao']}  \n"
-            f"Período atual: **{fmt_periodo(alvo['ini'].date(), alvo['fim'].date())}**"
-        )
-    atuais = choques_do_novo(alvo, outros)
-    if atuais:
-        st.warning("Este evento está em choque com:\n\n" + "\n".join(
-            f"- {descrever(c)}  ({m.lower()}, prioridade {NOME_PRIORIDADE[c['peso']].lower()})" for c, m in atuais))
-    else:
-        st.success("Este evento não tem choque de datas.")
-
-    # ---------------- sugestões ----------------
+    # ---------------- 2. datas sugeridas ----------------
     st.markdown("#### 2. Datas sugeridas")
+    st.caption("Regra: não pode haver choque dentro da mesma região, mas pode haver choque com "
+               "eventos de outras regiões.")
     o1, o2 = st.columns(2)
     evitar = o1.checkbox("Evitar feriados e pontos facultativos", value=True, key="aj_feriados")
     manter = o2.checkbox("Manter o mesmo dia da semana", value=True, key="aj_semana")
@@ -292,12 +331,12 @@ def painel_ajuste_datas(df_base):
         with st.container(border=True):
             c1, c2, c3 = st.columns([5, 2, 1.4], vertical_alignment="center")
             c1.markdown(f"**{fmt_periodo(sg['ini'].date(), sg['fim'].date())}**")
-            c2.caption(f"{quando} · sem choques" + (" e sem feriados" if evitar else ""))
+            c2.caption(f"{quando} · sem choques na região" + (" e sem feriados" if evitar else ""))
             if c3.button("Escolher", key=f"aj_sug_{i}", use_container_width=True):
                 st.session_state["aj_pendente"] = (sg["ini"].date(), sg["fim"].date())
                 st.rerun()
 
-    # ---------------- ajuste manual ----------------
+    # ---------------- 3. confirmação / ajuste manual ----------------
     st.markdown("#### 3. Confirme a nova data")
     d1, d2 = st.columns(2)
     novo_ini = d1.date_input("Nova data de início", format="DD/MM/YYYY", key="aj_ini")
@@ -312,7 +351,7 @@ def painel_ajuste_datas(df_base):
         st.error("A nova data entra em choque com:\n\n" + "\n".join(
             f"- {descrever(c)}  ({m.lower()})" for c, m in conflitos))
     else:
-        st.success("A nova data não tem choque com a agenda.")
+        st.success("A nova data não tem choque na região.")
     if feriados:
         st.warning("Feriados no período: " + "; ".join(f"{d:%d/%m} ({n})" for d, n in feriados) + ".")
     if pd.Timestamp(novo_ini) < pd.Timestamp.today().normalize():
@@ -336,6 +375,7 @@ def painel_ajuste_datas(df_base):
                 f"Datas de \"{alvo['nome']}\" atualizadas para {fmt_periodo(novo_ini, novo_fim)}."
             )
             st.rerun()
+
 
 @st.cache_data(ttl=86400)
 def baixar_logo():
