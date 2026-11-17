@@ -94,15 +94,21 @@ ESTILO = """<style>
     /* ---------- Correções de tema e componentes ---------- */
     :root, .stApp {color-scheme: light;}
 
-    /* Campos de texto e senha sempre claros */
+    /* Campos de texto, número e senha sempre claros */
     div[data-testid="stTextInput"] div[data-baseweb="input"],
     div[data-testid="stTextInput"] div[data-baseweb="base-input"],
     div[data-testid="stTextInput"] input,
-    div[data-testid="stTextInput"] button {
+    div[data-testid="stTextInput"] button,
+    div[data-testid="stNumberInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="base-input"],
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stNumberInput"] button {
         background-color: #FFFFFF !important; color: #111827 !important;
     }
-    div[data-testid="stTextInput"] div[data-baseweb="input"] {border: 1px solid #CBD5E1 !important;}
-    div[data-testid="stTextInput"] svg {fill: #475569 !important;}
+    div[data-testid="stTextInput"] div[data-baseweb="input"],
+    div[data-testid="stNumberInput"] div[data-baseweb="input"] {border: 1px solid #CBD5E1 !important;}
+    div[data-testid="stTextInput"] svg,
+    div[data-testid="stNumberInput"] svg {fill: #475569 !important;}
 
     /* Página de login */
     .login-topo {text-align: center; margin: 1.5rem 0 1.2rem 0;}
@@ -351,12 +357,18 @@ PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos")
 ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
                  "recusado": "Recusado", "cancelado": "Cancelado por você"}
 
+MESES_NOMES = [
+    (1, "Janeiro"), (2, "Fevereiro"), (3, "Março"), (4, "Abril"),
+    (5, "Maio"), (6, "Junho"), (7, "Julho"), (8, "Agosto"),
+    (9, "Setembro"), (10, "Outubro"), (11, "Novembro"), (12, "Dezembro"),
+]
+
 
 # ---------------------------------------------------------------------------
 # Banco e sessão
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
-def _preparar(_banco):
+def _preparar(_banco, _versao_schema=2):
     portal_db.criar_tabelas(_banco)
     ficha_membro.criar_tabela(_banco)
     return True
@@ -426,6 +438,10 @@ def _fmt(d):
 
 def _periodo(ini, fim):
     return _fmt(ini) if ini == fim else f"{_fmt(ini)} a {_fmt(fim)}"
+
+
+def _moeda(valor):
+    return f"R$ {float(valor or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _eventos_da_congregacao(regs, nome_cong, so_futuros=True):
@@ -769,7 +785,172 @@ def _ficha_entrada(banco, conta, tipo):
 # Financeiro
 # ---------------------------------------------------------------------------
 def pagina_financeiro(banco, conta):
-    st.info("Módulo financeiro em desenvolvimento. Em breve você poderá registar entradas, saídas e relatórios aqui.")
+    cid = conta["congregacao_id"]
+    hoje = date.today()
+
+    msg = st.session_state.pop("fin_msg", None)
+    if msg:
+        st.success(msg)
+
+    # Filtro de período no topo
+    c_mes, c_ano, _ = st.columns([1.5, 1, 3.5])
+    mes_sel = c_mes.selectbox(
+        "Mês de referência",
+        options=[m for m, _ in MESES_NOMES],
+        index=hoje.month - 1,
+        format_func=lambda m: dict(MESES_NOMES)[m],
+        key="fin_mes",
+    )
+    anos_disp = list(range(hoje.year - 2, hoje.year + 2))
+    ano_sel = c_ano.selectbox("Ano", options=anos_disp, index=anos_disp.index(hoje.year), key="fin_ano")
+
+    lancamentos = portal_db.listar_lancamentos(banco, cid, ano=ano_sel, mes=mes_sel)
+
+    total_entradas = sum(float(l["valor"]) for l in lancamentos if l["tipo"] == "Entrada")
+    total_saidas = sum(float(l["valor"]) for l in lancamentos if l["tipo"] == "Saída")
+    total_dizimos = sum(float(l["valor"]) for l in lancamentos if l["tipo"] == "Entrada" and l["categoria"] == "Dízimo")
+    saldo = total_entradas - total_saidas
+
+    # Indicadores do mês
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Entradas no mês", _moeda(total_entradas))
+    m2.metric("Dízimos no mês", _moeda(total_dizimos))
+    m3.metric("Saídas no mês", _moeda(total_saidas))
+    m4.metric("Saldo do período", _moeda(saldo))
+
+    aba_extrato, aba_entrada, aba_saida = st.tabs([
+        "📋 Extrato e Relatório",
+        "➕ Nova Entrada (Dízimos / Ofertas)",
+        "➖ Nova Saída (Despesas)",
+    ])
+
+    # --- ABA 1: EXTRATO E EXPORTAÇÃO ---
+    with aba_extrato:
+        if not lancamentos:
+            st.caption("Nenhum lançamento registrado neste mês.")
+        else:
+            linhas_df = []
+            for l in lancamentos:
+                detalhe = l["membro_nome"] if l["categoria"] == "Dízimo" and l["membro_nome"] else (l["descricao"] or "")
+                linhas_df.append({
+                    "ID": l["id"],
+                    "Data": _fmt(l["data_lancamento"]),
+                    "Tipo": l["tipo"],
+                    "Categoria": l["categoria"],
+                    "Membro / Descrição": detalhe,
+                    "Pagamento": l["forma_pagamento"] or "",
+                    "Valor": _moeda(l["valor"]) if l["tipo"] == "Entrada" else f"- {_moeda(l['valor'])}",
+                })
+            st.dataframe(pd.DataFrame(linhas_df), use_container_width=True, hide_index=True)
+
+            col_dl, col_del = st.columns([1.5, 2.5])
+            csv_bytes = pd.DataFrame(linhas_df).to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
+            col_dl.download_button(
+                "Baixar relatório do mês (CSV / Excel)",
+                data=csv_bytes,
+                file_name=f"financeiro_{cid}_{ano_sel}_{mes_sel:02d}.csv",
+                mime="text/csv",
+                key="fin_dl_csv",
+            )
+
+            with col_del.expander("Excluir um lançamento"):
+                por_id = {l["id"]: l for l in lancamentos}
+                id_exc = st.selectbox(
+                    "Selecione o lançamento para excluir",
+                    options=list(por_id.keys()),
+                    format_func=lambda i: f"#{i} · {_fmt(por_id[i]['data_lancamento'])} · {por_id[i]['categoria']} ({_moeda(por_id[i]['valor'])})",
+                    key="fin_sel_exc",
+                )
+                if st.button("Confirmar exclusão", key="fin_btn_exc"):
+                    portal_db.excluir_lancamento(banco, id_exc, cid)
+                    st.session_state["fin_msg"] = "Lançamento excluído com sucesso."
+                    st.rerun()
+
+    # --- ABA 2: REGISTRAR ENTRADA ---
+    with aba_entrada:
+        st.markdown("#### Registrar Entrada")
+        c1, c2, c3 = st.columns(3)
+        cat_ent = c1.selectbox("Categoria", list(portal_db.CATEGORIAS_ENTRADA), key="fin_e_cat")
+        val_ent = c2.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f", key="fin_e_val")
+        dt_ent = c3.date_input("Data", value=hoje, format="DD/MM/YYYY", key="fin_e_dt")
+
+        membro_id = None
+        membro_nome = ""
+        if cat_ent == "Dízimo":
+            membros_ativos = db.listar_membros(banco, cid, situacao="Ativo")
+            opcoes_membros = {0: "— Selecionar membro cadastrado —"}
+            for m in membros_ativos:
+                opcoes_membros[m["id"]] = m["nome"]
+            mid_sel = st.selectbox(
+                "Membro dizimista",
+                options=list(opcoes_membros.keys()),
+                format_func=lambda i: opcoes_membros[i],
+                key="fin_e_membro",
+            )
+            if mid_sel != 0:
+                membro_id = mid_sel
+                membro_nome = opcoes_membros[mid_sel]
+            else:
+                membro_nome = st.text_input("Ou digite o nome do contribuinte (caso ainda não esteja no ROL)", key="fin_e_mnome")
+
+        c4, c5 = st.columns([1, 2])
+        fp_ent = c4.selectbox("Forma de pagamento", list(portal_db.FORMAS_PAGAMENTO), key="fin_e_fp")
+        desc_ent = c5.text_input("Observação (opcional)", placeholder="Ex.: Culto de domingo à noite", key="fin_e_desc")
+
+        if st.button("Salvar Entrada", key="fin_btn_salvar_ent"):
+            if cat_ent == "Dízimo" and not (membro_nome or "").strip():
+                st.error("Selecione o membro dizimista ou informe o nome.")
+            else:
+                try:
+                    portal_db.criar_lancamento(banco, {
+                        "congregacao_id": cid,
+                        "conta_id": conta["id"],
+                        "tipo": "Entrada",
+                        "categoria": cat_ent,
+                        "membro_id": membro_id,
+                        "membro_nome": membro_nome,
+                        "descricao": desc_ent,
+                        "valor": val_ent,
+                        "forma_pagamento": fp_ent,
+                        "data_lancamento": dt_ent,
+                    })
+                except ValueError as erro:
+                    st.error(str(erro))
+                else:
+                    st.session_state["fin_msg"] = "Entrada registrada com sucesso."
+                    st.rerun()
+
+    # --- ABA 3: REGISTRAR SAÍDA ---
+    with aba_saida:
+        st.markdown("#### Registrar Saída (Despesa)")
+        s1, s2, s3 = st.columns(3)
+        cat_sai = s1.selectbox("Categoria da despesa", list(portal_db.CATEGORIAS_SAIDA), key="fin_s_cat")
+        val_sai = s2.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f", key="fin_s_val")
+        dt_sai = s3.date_input("Data do pagamento", value=hoje, format="DD/MM/YYYY", key="fin_s_dt")
+
+        s4, s5 = st.columns([1, 2])
+        fp_sai = s4.selectbox("Forma de pagamento", list(portal_db.FORMAS_PAGAMENTO), key="fin_s_fp")
+        desc_sai = s5.text_input("Descrição / Referente (obrigatório)", placeholder="Ex.: Conta de energia ref. mês atual", key="fin_s_desc")
+
+        if st.button("Salvar Saída", key="fin_btn_salvar_sai"):
+            try:
+                portal_db.criar_lancamento(banco, {
+                    "congregacao_id": cid,
+                    "conta_id": conta["id"],
+                    "tipo": "Saída",
+                    "categoria": cat_sai,
+                    "membro_id": None,
+                    "membro_nome": None,
+                    "descricao": desc_sai,
+                    "valor": val_sai,
+                    "forma_pagamento": fp_sai,
+                    "data_lancamento": dt_sai,
+                })
+            except ValueError as erro:
+                st.error(str(erro))
+            else:
+                st.session_state["fin_msg"] = "Saída registrada com sucesso."
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------

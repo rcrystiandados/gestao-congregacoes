@@ -1,4 +1,4 @@
-"""Banco do portal da congregação: pedidos de remarcação e dados de contato da congregação.
+"""Banco do portal da congregação: pedidos de remarcação, dados de contato e financeiro da congregação.
 
 Não depende do Streamlit. Usa a mesma conexão (gestao_db.Banco) do sistema da liderança.
 """
@@ -7,6 +7,26 @@ import gestao_db as db
 
 STATUS = ("pendente", "aprovado", "recusado", "cancelado")
 _COLUNAS_CONTATO = ("contato_nome", "contato_telefone", "contato_email")
+
+CATEGORIAS_ENTRADA = (
+    "Dízimo",
+    "Oferta de Culto",
+    "Oferta de Departamento",
+    "Oferta Especial / Campanha",
+    "Outras Entradas",
+)
+
+CATEGORIAS_SAIDA = (
+    "Água / Energia / Internet",
+    "Manutenção e Reforma",
+    "Material de Limpeza / Consumo",
+    "Eventos e Departamentos",
+    "Assistência Social",
+    "Repasse à Sede",
+    "Outras Despesas",
+)
+
+FORMAS_PAGAMENTO = ("PIX", "Dinheiro", "Transferência / Cartão")
 
 
 def criar_tabelas(banco):
@@ -32,6 +52,22 @@ def criar_tabelas(banco):
             decidido_em TIMESTAMP,
             decidido_por TEXT)""")
         s.executar("CREATE INDEX IF NOT EXISTS idx_ped_cong ON pedidos_remarcacao(congregacao_id)")
+
+        s.executar(f"""CREATE TABLE IF NOT EXISTS lancamentos_financeiros (
+            id {pk},
+            congregacao_id INTEGER NOT NULL REFERENCES congregacoes(id),
+            conta_id INTEGER,
+            tipo TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            membro_id INTEGER,
+            membro_nome TEXT,
+            descricao TEXT,
+            valor REAL NOT NULL,
+            forma_pagamento TEXT,
+            data_lancamento DATE NOT NULL,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        s.executar("CREATE INDEX IF NOT EXISTS idx_fin_cong_data ON lancamentos_financeiros(congregacao_id, data_lancamento)")
+
         # contato da congregação (a tabela congregacoes original não tem estes campos)
         if banco.sqlite:
             existentes = {l["name"] for l in s.consultar("PRAGMA table_info(congregacoes)")}
@@ -127,3 +163,78 @@ def decidir_pedido(banco, pedido_id, status, resposta, decidido_por):
 def contar_pendentes(banco):
     with banco.sessao() as s:
         return s.consultar("SELECT COUNT(*) AS n FROM pedidos_remarcacao WHERE status = 'pendente'")[0]["n"]
+
+
+# ---------------------------------------------------------------------------
+# Financeiro da congregação
+# ---------------------------------------------------------------------------
+def criar_lancamento(banco, d):
+    """Registra uma entrada ou saída financeira da congregação."""
+    tipo = d.get("tipo")
+    if tipo not in ("Entrada", "Saída"):
+        raise ValueError("Tipo de lançamento inválido.")
+    categoria = (d.get("categoria") or "").strip()
+    if not categoria:
+        raise ValueError("Selecione a categoria.")
+    try:
+        valor = round(float(d.get("valor") or 0), 2)
+    except (TypeError, ValueError):
+        raise ValueError("Informe um valor válido.")
+    if valor <= 0:
+        raise ValueError("O valor deve ser maior que zero.")
+    if not d.get("data_lancamento"):
+        raise ValueError("Informe a data do lançamento.")
+
+    descricao = (d.get("descricao") or "").strip()
+    if tipo == "Saída" and len(descricao) < 3:
+        raise ValueError("Descreva o motivo ou referente da saída.")
+
+    with banco.sessao() as s:
+        return s.inserir(
+            """INSERT INTO lancamentos_financeiros (
+                congregacao_id, conta_id, tipo, categoria, membro_id, membro_nome,
+                descricao, valor, forma_pagamento, data_lancamento
+            ) VALUES (:c, :conta, :t, :cat, :mid, :mnome, :desc, :val, :fp, :dt) RETURNING id""",
+            {
+                "c": d["congregacao_id"],
+                "conta": d.get("conta_id"),
+                "t": tipo,
+                "cat": categoria,
+                "mid": d.get("membro_id"),
+                "mnome": db._texto(d.get("membro_nome")),
+                "desc": db._texto(descricao),
+                "val": valor,
+                "fp": db._texto(d.get("forma_pagamento") or "PIX"),
+                "dt": db._iso(d["data_lancamento"]),
+            },
+        )
+
+
+def listar_lancamentos(banco, congregacao_id, ano=None, mes=None, tipo=None):
+    """Lista os lançamentos da congregação filtrando opcionalmente por mês/ano e tipo."""
+    with banco.sessao() as s:
+        linhas = s.consultar(
+            """SELECT id, congregacao_id, conta_id, tipo, categoria, membro_id, membro_nome,
+                      descricao, valor, forma_pagamento, data_lancamento, criado_em
+                 FROM lancamentos_financeiros
+                WHERE congregacao_id = :cid
+                  AND (:t IS NULL OR tipo = :t)
+                ORDER BY data_lancamento DESC, id DESC""",
+            {"cid": congregacao_id, "t": tipo},
+        )
+    regs = db._normalizar(linhas, ["data_lancamento"])
+    if ano is not None:
+        regs = [r for r in regs if r["data_lancamento"] and r["data_lancamento"].year == int(ano)]
+    if mes is not None:
+        regs = [r for r in regs if r["data_lancamento"] and r["data_lancamento"].month == int(mes)]
+    return regs
+
+
+def excluir_lancamento(banco, lancamento_id, congregacao_id):
+    """Permite à congregação excluir um lançamento próprio."""
+    with banco.sessao() as s:
+        n = s.executar(
+            "DELETE FROM lancamentos_financeiros WHERE id = :i AND congregacao_id = :c",
+            {"i": lancamento_id, "c": congregacao_id},
+        )
+    return n > 0
