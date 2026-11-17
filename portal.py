@@ -7,6 +7,7 @@ Cada conta pertence a UMA congregação, criada pela liderança (página "Acesso
 e só enxerga e altera os dados dessa congregação. A congregação vem da conta autenticada, nunca de um
 campo da tela.
 """
+import html
 import re
 
 import pandas as pd
@@ -18,23 +19,235 @@ import gestao
 import gestao_db as db
 import portal_db
 
-st.set_page_config(page_title="Portal da Congregação MEN", page_icon="⛪", layout="wide")
+st.set_page_config(page_title="Portal da Congregação MEN", page_icon="⛪", layout="wide",
+                   initial_sidebar_state="expanded")
 
-PAGINAS = ["Início", "Membros", "Novo membro", "Departamentos", "Eventos internos",
-           "Pedir remarcação", "Minha congregação", "Minha conta"]
+LOGO_URL = "https://github.com/rcrystiandados/app-igreja/blob/main/logo.jpeg?raw=true"
+
+# Mesmo visual do sistema da liderança (azul MEN, menu lateral em botões, campos claros).
+ESTILO = """<style>
+    :root {
+        --azul: #1E3A8A;
+        --azul-escuro: #152C6B;
+        --azul-claro: #E8EEFB;
+        --fundo: #F5F7FA;
+        --borda: #DDE3EC;
+        --texto: #1F2937;
+    }
+
+    .stApp {background: var(--fundo);}
+    header[data-testid="stHeader"] {background: transparent;}
+    #MainMenu, footer {visibility: hidden;}
+
+    /* Conteúdo */
+    .block-container {
+        padding: 2.5rem 3rem 4rem 3rem;
+        max-width: 1200px;
+    }
+    .block-container h1, .block-container h2, .block-container h3, .block-container h4 {
+        color: var(--azul) !important; font-weight: 700 !important;
+    }
+    .block-container h1 {
+        font-size: 1.9rem; padding-bottom: .6rem; border-bottom: 2px solid var(--borda);
+        margin-bottom: 1.2rem;
+    }
+    .block-container p, .block-container label, .block-container li {color: var(--texto);}
+
+    /* Barra lateral (menu) */
+    section[data-testid="stSidebar"] {background: var(--azul); border-right: none;}
+    section[data-testid="stSidebar"] * {color: #FFFFFF !important;}
+    .sb-titulo {font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: .4rem 0 .2rem 0;}
+    .sb-sub {font-size: .85rem; opacity: .75; margin-bottom: 1.4rem;}
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] {gap: .25rem;}
+    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {display: none;}
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        width: 100%; padding: .65rem .9rem; border-radius: 6px;
+        cursor: pointer; transition: background .15s;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {background: rgba(255,255,255,.12);}
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {background: #FFFFFF;}
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) * {
+        color: var(--azul) !important; font-weight: 600;
+    }
+    .sb-contato {font-size: .82rem; line-height: 1.7; opacity: .9;}
+    section[data-testid="stSidebar"] hr {border-color: rgba(255,255,255,.2);}
+
+    /* Cartões */
+    .card {
+        background: #FFFFFF; border: 1px solid var(--borda); border-radius: 8px;
+        padding: 1.1rem 1.3rem; height: 100%;
+    }
+    .card .card-titulo {color: var(--azul); font-weight: 700; margin-bottom: .3rem;}
+    .card .card-texto {color: var(--texto); font-size: .95rem;}
+
+    /* Indicadores */
+    div[data-testid="stMetric"] {
+        background: #FFFFFF; border: 1px solid var(--borda);
+        border-radius: 8px; padding: .9rem 1.1rem;
+    }
+    div[data-testid="stMetricValue"] {color: var(--azul);}
+
+    /* Botões */
+    div.stButton > button, div.stFormSubmitButton > button, a[data-testid="stBaseLinkButton-secondary"] {
+        background-color: var(--azul) !important; color: #FFFFFF !important;
+        border: none !important; border-radius: 6px !important;
+        padding: .55rem 1.4rem !important; font-weight: 600 !important;
+    }
+    div.stButton > button *, div.stFormSubmitButton > button * {color: #FFFFFF !important;}
+    div.stButton > button:hover, div.stFormSubmitButton > button:hover {
+        background-color: var(--azul-escuro) !important;
+    }
+
+    /* Avisos legíveis */
+    div[data-testid="stAlert"] {border-left: 5px solid var(--azul) !important;}
+    div[data-testid="stAlert"] * {color: var(--texto) !important;}
+
+    /* Campos */
+    div[data-baseweb="input"], div[data-baseweb="select"] > div, div[data-baseweb="base-input"] {
+        background-color: #FFFFFF !important; border-color: #CBD5E1 !important;
+    }
+    div[data-testid="stForm"] {background: #FFFFFF; border: 1px solid var(--borda); border-radius: 8px;}
+
+    /* ---------- Correções de tema e componentes ---------- */
+    :root, .stApp {color-scheme: light;}
+
+    .sb-topo {text-align: center; margin: .2rem 0 1.2rem 0;}
+    .sb-logo {width: 100%; max-width: 210px; height: auto; border-radius: 8px;
+              background: #FFFFFF; margin-bottom: .8rem;}
+    .sb-topo .sb-titulo {margin: 0;}
+
+    /* Menu: some com as bolinhas do radio */
+    section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child,
+    section[data-testid="stSidebar"] label[data-baseweb="radio"] > span:first-child,
+    section[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child:not([data-testid="stMarkdownContainer"]) {
+        display: none !important;
+    }
+
+    /* Campos de texto e senha sempre claros */
+    div[data-testid="stTextInput"] div[data-baseweb="input"],
+    div[data-testid="stTextInput"] div[data-baseweb="base-input"],
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stTextInput"] button {
+        background-color: #FFFFFF !important; color: #111827 !important;
+    }
+    div[data-testid="stTextInput"] div[data-baseweb="input"] {border: 1px solid #CBD5E1 !important;}
+    div[data-testid="stTextInput"] svg {fill: #475569 !important;}
+
+    /* Avisos sempre claros e legíveis */
+    div[data-testid="stAlert"] {background-color: #E8EEFB !important;}
+    div[data-testid="stAlert"] * {background-color: transparent !important; color: #1F2937 !important;}
+
+    /* Página de login */
+    .login-topo {text-align: center; margin: 1.5rem 0 1.2rem 0;}
+    .login-topo .login-icone {
+        width: 64px; height: 64px; margin: 0 auto .8rem auto; border-radius: 50%;
+        background: var(--azul-claro); display: flex; align-items: center;
+        justify-content: center; font-size: 1.8rem;
+    }
+    .login-topo h2 {margin: 0 0 .4rem 0;}
+    .login-topo p {color: #6B7280 !important; margin: 0;}
+
+    /* ---------- Menu lateral em botões ---------- */
+    section[data-testid="stSidebar"] div.stButton > button {
+        width: 100%; justify-content: flex-start; text-align: left;
+        padding: .65rem .9rem !important; border-radius: 6px !important;
+        background-color: transparent !important; border: none !important;
+        box-shadow: none !important; font-weight: 500 !important;
+    }
+    section[data-testid="stSidebar"] div.stButton > button * {
+        color: #FFFFFF !important; justify-content: flex-start; text-align: left;
+    }
+    section[data-testid="stSidebar"] div.stButton > button:hover {
+        background-color: rgba(255,255,255,.14) !important;
+    }
+    section[data-testid="stSidebar"] div.stButton > button[kind="primary"],
+    section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"] {
+        background-color: #FFFFFF !important;
+    }
+    section[data-testid="stSidebar"] div.stButton > button[kind="primary"] *,
+    section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"] * {
+        color: #1E3A8A !important; font-weight: 700 !important;
+    }
+
+    /* ---------- Selects e listas sempre claros ---------- */
+    div[data-baseweb="select"] > div {background-color: #FFFFFF !important; border: 1px solid #CBD5E1 !important;}
+    div[data-baseweb="select"] * {color: #111827 !important;}
+    div[data-baseweb="select"] svg {fill: #475569 !important;}
+    div[data-baseweb="popover"], div[data-baseweb="popover"] ul,
+    div[data-baseweb="popover"] li, div[data-baseweb="menu"] {
+        background-color: #FFFFFF !important; color: #111827 !important;
+    }
+    div[data-baseweb="popover"] li:hover {background-color: #E8EEFB !important;}
+    span[data-baseweb="tag"] {background-color: #1E3A8A !important;}
+    span[data-baseweb="tag"] * {color: #FFFFFF !important;}
+    div[data-testid="stDateInput"] div[data-baseweb="input"],
+    div[data-testid="stDateInput"] input {background-color: #FFFFFF !important; color: #111827 !important;}
+
+    /* ---------- Título do painel, submenu e botão de link ---------- */
+    .block-container h1.titulo-sem-linha {border-bottom: none; padding-bottom: 0; margin: 0;}
+    .block-container hr.linha-titulo {border: none; border-top: 2px solid #DDE3EC; margin: .6rem 0 1.4rem 0;}
+
+    section[data-testid="stSidebar"] [class*="st-key-sub_"] button {
+        padding-left: 2rem !important; font-size: .9rem !important;
+    }
+
+    .block-container a[data-testid^="stBaseLinkButton"] {
+        background: #FFFFFF !important; border: 1.5px solid #1E3A8A !important;
+        border-radius: 6px !important; padding: .55rem 1.4rem !important;
+        text-decoration: none !important; transition: background .15s;
+    }
+    .block-container a[data-testid^="stBaseLinkButton"],
+    .block-container a[data-testid^="stBaseLinkButton"] * {
+        color: #1E3A8A !important; font-weight: 600 !important;
+    }
+    .block-container a[data-testid^="stBaseLinkButton"]:hover {background: #1E3A8A !important;}
+    .block-container a[data-testid^="stBaseLinkButton"]:hover * {color: #FFFFFF !important;}
+
+    /* ---------- Bloco de exportação em destaque ---------- */
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.marca-exportar) {
+        background: #F3F7FF; border: 2px solid #1E3A8A !important;
+        border-left: 8px solid #1E3A8A !important; border-radius: 12px;
+        box-shadow: 0 4px 14px rgba(30,58,138,.15); padding: .6rem .8rem;
+    }
+    .exp-topo {display: flex; align-items: center; gap: .9rem; margin-bottom: .6rem;}
+    .exp-icone {
+        width: 46px; height: 46px; border-radius: 50%; background: #1E3A8A; color: #FFFFFF;
+        display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex: none;
+    }
+    .exp-titulo {font-size: 1.25rem; font-weight: 700; color: #1E3A8A; line-height: 1.2;}
+    .exp-sub {font-size: .9rem; color: #475569;}
+    div[data-testid="stDownloadButton"] button {
+        background-color: #2E7D5B !important; border: none !important; border-radius: 6px !important;
+        padding: .65rem 1.6rem !important; font-weight: 700 !important;
+    }
+    div[data-testid="stDownloadButton"] button, div[data-testid="stDownloadButton"] button * {color: #FFFFFF !important;}
+    div[data-testid="stDownloadButton"] button:hover {background-color: #256649 !important;}
+
+    /* ---------- Blocos da página inicial da liderança ---------- */
+    .adm-card {padding: .2rem .2rem .4rem .2rem;}
+    .adm-tit {font-size: 1.15rem; font-weight: 700; color: #1E3A8A; margin-bottom: .5rem;}
+    .adm-num {font-size: 2.6rem; font-weight: 700; line-height: 1;}
+    .adm-lbl {font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #64748B; margin: .2rem 0 .6rem 0;}
+    .adm-desc {font-size: .92rem; color: #475569; min-height: 2.6rem;}
+    .sb-grupo {font-size: .72rem; letter-spacing: .1em; font-weight: 700; opacity: .7;
+               margin: 1rem 0 .25rem .5rem;}
+    .sb-usuario {font-size: .9rem; margin: .2rem 0 .4rem .5rem; opacity: .9;}
+</style>
+"""
+st.markdown(ESTILO, unsafe_allow_html=True)
+
+MENU = [
+    (None, ["Início"]),
+    ("GESTÃO DA CONGREGAÇÃO", ["Membros", "Novo membro", "Departamentos", "Eventos internos"]),
+    ("CALENDÁRIO", ["Pedir remarcação"]),
+    ("MINHA CONGREGAÇÃO", ["Minha congregação", "Minha conta"]),
+]
+PAGINAS = [i for _, itens in MENU for i in itens]
 PAGINAS_GESTAO = ("Membros", "Novo membro", "Departamentos", "Eventos internos")
 ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
                  "recusado": "Recusado", "cancelado": "Cancelado por você"}
 
-st.markdown("""<style>
-    .titulo-portal {color: #1E3A8A; margin: 0; font-size: 2rem; font-weight: 700;}
-    .linha-titulo {border: 0; border-top: 2px solid #CBD5E1; margin: .3rem 0 1rem 0;}
-    .login-topo {text-align: center; margin: 2rem 0 1.2rem 0;}
-    .login-topo h2 {color: #1E3A8A; margin: 0 0 .4rem 0;}
-    .login-topo p {color: #6B7280; margin: 0;}
-    .sb-titulo {font-weight: 700; color: #1E3A8A; font-size: 1.1rem;}
-    .sb-sub {font-size: .85rem; color: #64748B;}
-</style>""", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +272,7 @@ def _sair():
 
 
 def tela_acesso(banco):
-    st.markdown('<div class="login-topo"><h2>Portal da Congregação</h2>'
+    st.markdown('<div class="login-topo"><div class="login-icone">⛪</div><h2>Portal da Congregação</h2>'
                 '<p>Entre com o e-mail e a senha fornecidos pela liderança.</p></div>', unsafe_allow_html=True)
     _, centro, _ = st.columns([1, 1.2, 1])
     with centro:
@@ -352,6 +565,32 @@ def pagina_minha_conta(banco, conta):
 
 
 # ---------------------------------------------------------------------------
+# Barra lateral
+# ---------------------------------------------------------------------------
+def _barra_lateral(conta, com_menu):
+    with st.sidebar:
+        st.markdown(
+            f'<div class="sb-topo"><img class="sb-logo" src="{LOGO_URL}" alt="Logo">'
+            '<div class="sb-titulo">Portal da Congregação</div>'
+            f'<div class="sb-sub">{html.escape(conta["congregacao"]) if conta else "Sistema das congregações MEN"}</div></div>',
+            unsafe_allow_html=True)
+        if conta and com_menu:
+            st.markdown(f'<div class="sb-usuario">Olá, <b>{html.escape(conta["nome"])}</b></div>', unsafe_allow_html=True)
+            for grupo, itens in MENU:
+                if grupo:
+                    st.markdown(f'<div class="sb-grupo">{grupo}</div>', unsafe_allow_html=True)
+                for nome in itens:
+                    ativa = st.session_state["pagina_portal"] == nome
+                    if st.button(nome, key=f"menu_{nome}", type="primary" if ativa else "secondary",
+                                 use_container_width=True):
+                        st.session_state["pagina_portal"] = nome
+                        st.rerun()
+        st.markdown("---")
+        st.markdown('<div class="sb-contato">Desenvolvido por <b>Rodolfo Crystian</b><br>'
+                    'rcrystiandados@gmail.com<br>WhatsApp: (83) 9 9962-3735</div>', unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
 # Fluxo principal
 # ---------------------------------------------------------------------------
 banco = _banco()
@@ -365,21 +604,23 @@ if st.session_state.get("conta_id"):
         _sair()
         st.warning("Este acesso foi desativado. Procure a liderança.")
 
+st.session_state.setdefault("pagina_portal", "Início")
+if st.session_state["pagina_portal"] not in PAGINAS:
+    st.session_state["pagina_portal"] = "Início"
+
+_barra_lateral(conta, com_menu=bool(conta) and not conta["trocar_senha"])
+
 if conta is None:
     tela_acesso(banco)
 elif conta["trocar_senha"]:
     tela_troca_obrigatoria(banco, conta)
 else:
-    with st.sidebar:
-        st.markdown(f'<div class="sb-titulo">{conta["congregacao"]}</div>'
-                    f'<div class="sb-sub">Portal da congregação · {conta["nome"]}</div>', unsafe_allow_html=True)
-        pagina = st.radio("Menu", PAGINAS, key="pagina_portal", label_visibility="collapsed")
-        if st.button("Sair", use_container_width=True):
-            _sair()
-            st.rerun()
-
-    t1, _ = st.columns([5, 1], vertical_alignment="center")
-    t1.markdown(f'<h1 class="titulo-portal">{pagina}</h1>', unsafe_allow_html=True)
+    pagina = st.session_state["pagina_portal"]
+    t1, t2 = st.columns([5, 1], vertical_alignment="center")
+    t1.markdown(f'<h1 class="titulo-sem-linha">{pagina}</h1>', unsafe_allow_html=True)
+    if t2.button("Sair", key="sair_topo", use_container_width=True):
+        _sair()
+        st.rerun()
     st.markdown('<hr class="linha-titulo">', unsafe_allow_html=True)
 
     calendario = _carregar_calendario() if pagina in ("Início", "Pedir remarcação", "Eventos internos") else None
