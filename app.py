@@ -2,6 +2,7 @@
 
 Calendário: choques de agenda, ajuste de datas e exportação.
 Congregações: visão geral, congregações, membros, novo membro, departamentos e eventos internos.
+Portal das congregações: pedidos de remarcação e acessos (o portal em si é o portal.py, outro app).
 Segredos necessários (Streamlit Cloud > Settings > Secrets):
     database_url = "postgresql://..."   # banco PostgreSQL na nuvem (Neon)
     codigo_convite = "codigo-da-lideranca"   # exigido para criar uma conta individual
@@ -16,6 +17,7 @@ import json
 import pandas as pd
 import streamlit as st
 
+import admin_portal
 import agenda
 import autenticacao
 import gestao
@@ -56,13 +58,17 @@ MENU = [
     ("CALENDÁRIO", ["Agenda", "Ajustar datas", "Exportar calendário"]),
     ("CONGREGAÇÕES", ["Visão geral", "Congregações", "Membros", "Novo membro", "Departamentos",
                       "Eventos internos"]),
+    ("PORTAL DAS CONGREGAÇÕES", ["Pedidos de remarcação", "Acessos das congregações"]),
 ]
+PAGINAS_SO_ADMIN = ("Acessos das congregações",)
 PAGINAS = [p for _, itens in MENU for p in itens]
 
 
 def menu_do_usuario():
-    conta = ["Minha conta"] + (["Usuários"] if autenticacao.usuario_atual().get("perfil") == "admin" else [])
-    return MENU + [("CONTA", conta)]
+    admin = autenticacao.usuario_atual().get("perfil") == "admin"
+    conta = ["Minha conta"] + (["Usuários"] if admin else [])
+    menu = [(g, [i for i in itens if admin or i not in PAGINAS_SO_ADMIN]) for g, itens in MENU]
+    return menu + [("CONTA", conta)]
 
 PAGINAS_CALENDARIO = ("Agenda", "Ajustar datas", "Exportar calendário")
 
@@ -294,6 +300,8 @@ def painel_inicial():
     except Exception:
         pass
     r = gestao.resumo_silencioso()
+    n_pedidos = admin_portal.contar_pendentes()
+    admin = autenticacao.usuario_atual().get("perfil") == "admin"
 
     verde, vermelho, azul = "#2E7D5B", "#C0392B", "#1E3A8A"
 
@@ -326,6 +334,11 @@ def painel_inicial():
             ("Eventos internos", "Eventos internos", "Ver", "reuniões e ensaios",
              "Eventos internos de cada congregação e eventos do calendário geral.", azul),
         ]),
+        ("Portal das congregações", [
+            ("Pedidos de remarcação", "Pedidos de remarcação", val(n_pedidos), "pedido(s) aguardando",
+             "Analise os pedidos de mudança de data feitos pelas congregações.", cor(n_pedidos)),
+        ] + ([("Acessos das congregações", "Acessos das congregações", "Ver", "contas das congregações",
+               "Crie e administre o acesso de cada congregação ao portal.", azul)] if admin else [])),
     ]
     for titulo, blocos in grupos:
         st.markdown(f"#### {titulo}")
@@ -402,11 +415,11 @@ else:
 
     pagina = st.session_state["pagina"]
     calendario = None
-    if pagina in PAGINAS_CALENDARIO or pagina == "Eventos internos":
+    if pagina in PAGINAS_CALENDARIO or pagina in ("Eventos internos", "Pedidos de remarcação"):
         try:
             calendario = agenda.carregar_calendario()
         except Exception as erro:
-            if pagina in PAGINAS_CALENDARIO:
+            if pagina in PAGINAS_CALENDARIO or pagina == "Pedidos de remarcação":
                 st.error(f"Não foi possível ler a planilha do calendário: {erro}")
 
     if pagina == "Painel inicial":
@@ -415,6 +428,10 @@ else:
         autenticacao.pagina_minha_conta()
     elif pagina == "Usuários":
         autenticacao.pagina_usuarios()
+    elif pagina == "Pedidos de remarcação":
+        admin_portal.pagina_pedidos(calendario)
+    elif pagina == "Acessos das congregações":
+        admin_portal.pagina_acessos()
     elif pagina in PAGINAS_CALENDARIO:
         if calendario is not None:
             if pagina == "Agenda":

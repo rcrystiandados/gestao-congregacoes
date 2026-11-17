@@ -86,7 +86,11 @@ def _fmt_telefone(chave):
 
 
 def _escolher_congregacao(banco, chave, rotulo="Congregação", todas=False):
-    """Seletor de congregação. Devolve o id (ou None para 'Todas'). Devolve False se não há congregações."""
+    """Seletor de congregação. Devolve o id (ou None para 'Todas'). Devolve False se não há congregações.
+    No portal da congregação não há escolha: vale sempre a congregação da conta que entrou."""
+    fixa = st.session_state.get("_congregacao_fixa")
+    if fixa:
+        return fixa
     congregacoes = db.listar_congregacoes(banco)
     if not congregacoes:
         st.info("Ainda não há congregações no banco. Abra a **Visão geral** e importe a lista atual.")
@@ -107,9 +111,13 @@ def _campos_membro(banco, prefixo, membro=None):
     base = f"{prefixo}_{membro['id'] if membro else versao}"
     m = membro or {}
 
-    atual = m.get("congregacao_id")
-    cid = st.selectbox("Congregação", ids, index=ids.index(atual) if atual in ids else 0,
-                       format_func=lambda i: nomes[i], key=f"{base}_cong")
+    fixa = st.session_state.get("_congregacao_fixa")
+    if fixa:
+        cid = fixa
+    else:
+        atual = m.get("congregacao_id")
+        cid = st.selectbox("Congregação", ids, index=ids.index(atual) if atual in ids else 0,
+                           format_func=lambda i: nomes[i], key=f"{base}_cong")
 
     c1, c2 = st.columns(2)
     nome = c1.text_input("Nome completo", value=m.get("nome", ""), key=f"{base}_nome")
@@ -271,7 +279,7 @@ def _novo_membro(banco):
             st.session_state["nm_msg"] = f"{dados['nome']} foi cadastrado(a) com sucesso."
             st.rerun()
 
-    recentes = db.ultimos_membros(banco, 6)
+    recentes = db.ultimos_membros(banco, 6, st.session_state.get("_congregacao_fixa"))
     if recentes:
         st.markdown("#### Últimos membros incluídos")
         st.dataframe(
@@ -446,8 +454,8 @@ def _eventos(banco, calendario_df):
             use_container_width=True, hide_index=True)
 
     st.markdown("#### Eventos internos")
-    st.caption("Reuniões, ensaios e cultos especiais da congregação. Ficam só aqui, na área da liderança, "
-               "e não aparecem no calendário público.")
+    st.caption("Reuniões, ensaios e cultos especiais da congregação. Ficam só nos sistemas internos "
+               "(liderança e congregação) e não aparecem no calendário público.")
     msg = st.session_state.pop("ev_msg", None)
     if msg:
         st.success(msg)
@@ -555,6 +563,7 @@ def resumo_silencioso():
 # Ponto de entrada
 # ---------------------------------------------------------------------------
 def renderizar(subpagina, calendario_df, mapa_congregacoes):
+    st.session_state.pop("_congregacao_fixa", None)
     banco = _banco()
     if banco is None:
         return
@@ -565,6 +574,36 @@ def renderizar(subpagina, calendario_df, mapa_congregacoes):
         elif subpagina == "Congregações":
             _congregacoes(banco, mapa_congregacoes)
         elif subpagina == "Membros":
+            _membros(banco)
+        elif subpagina == "Novo membro":
+            _novo_membro(banco)
+        elif subpagina == "Departamentos":
+            _departamentos(banco)
+        elif subpagina in ("Eventos", "Eventos internos"):
+            _eventos(banco, calendario_df)
+    except ImportError:
+        st.error("Falta a biblioteca `psycopg2-binary`. Acrescente-a ao requirements.txt do repositório.")
+    except Exception as erro:
+        st.error(f"Não foi possível concluir a operação: {erro}")
+
+
+AVISO_PORTAL = ("Dados pessoais de membros são sensíveis (a religião é dado sensível na LGPD). "
+                "Cadastre apenas o necessário e não compartilhe o seu acesso.")
+
+
+def renderizar_congregacao(subpagina, congregacao_id, calendario_df):
+    """Portal da congregação: as mesmas telas da gestão, travadas na congregação da conta que entrou.
+
+    A congregação vem da conta autenticada (nunca de um campo da tela) e é regravada a cada execução.
+    Páginas: Membros, Novo membro, Departamentos, Eventos internos.
+    """
+    banco = _banco()
+    if banco is None:
+        return
+    st.session_state["_congregacao_fixa"] = int(congregacao_id)
+    st.caption(AVISO_PORTAL)
+    try:
+        if subpagina == "Membros":
             _membros(banco)
         elif subpagina == "Novo membro":
             _novo_membro(banco)

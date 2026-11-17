@@ -412,12 +412,13 @@ def listar_membros(banco, congregacao_id=None, departamento_id=None, situacao=No
     return _normalizar(linhas, _CAMPOS_DATA_MEMBRO)
 
 
-def ultimos_membros(banco, quantidade=8):
+def ultimos_membros(banco, quantidade=8, congregacao_id=None):
     with banco.sessao() as s:
         linhas = s.consultar(
             """SELECT m.id, m.nome, m.cargo, m.data_entrada, c.nome AS congregacao
                  FROM membros m JOIN congregacoes c ON c.id = m.congregacao_id
-                ORDER BY m.id DESC""")[:quantidade]
+                WHERE (:cid IS NULL OR m.congregacao_id = :cid)
+                ORDER BY m.id DESC""", {"cid": congregacao_id})[:quantidade]
     return _normalizar(linhas, ["data_entrada"])
 
 
