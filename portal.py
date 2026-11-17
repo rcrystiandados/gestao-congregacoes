@@ -22,7 +22,7 @@ import gestao_db as db
 import portal_db
 
 st.set_page_config(page_title="Portal da Congregação MEN", page_icon="⛪", layout="wide",
-                   initial_sidebar_state="expanded")
+                   initial_sidebar_state="collapsed")
 
 LOGO_URL = "https://github.com/rcrystiandados/app-igreja/blob/main/logo.jpeg?raw=true"
 
@@ -236,56 +236,109 @@ ESTILO = """<style>
                margin: 1rem 0 .25rem .5rem;}
     .sb-usuario {font-size: .9rem; margin: .2rem 0 .4rem .5rem; opacity: .9;}
 
-    /* ---------- Menu em cascata: submenus aparecem ao passar o mouse ---------- */
-    section[data-testid="stSidebar"],
-    section[data-testid="stSidebar"] > div,
-    section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
-    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
-    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {overflow: visible !important;}
-    section[data-testid="stSidebar"] {z-index: 1000000;}
-    section[data-testid="stSidebar"] [class*="st-key-grp_"] {position: relative;}
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] {
-        display: none; position: absolute; top: 0; left: 100%; width: 250px;
-        background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 8px;
-        box-shadow: 0 8px 24px rgba(15,23,42,.22); padding: .35rem; gap: .15rem; z-index: 1000001;
+    /* ---------- Barra de navegação superior (sem menu lateral) ---------- */
+    section[data-testid="stSidebar"], div[data-testid="stSidebarCollapsedControl"],
+    div[data-testid="collapsedControl"] {display: none !important;}
+    header[data-testid="stHeader"] {display: none;}
+    .block-container {padding-top: 1rem;}
+
+    div.st-key-nav {
+        position: sticky; top: .5rem; z-index: 1000;
+        display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center;
+        gap: .2rem !important; background: #FFFFFF; border: 1px solid var(--borda); border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(30,58,138,.10); padding: .35rem .8rem; margin-bottom: 1.4rem;
     }
-    section[data-testid="stSidebar"] [class*="st-key-grp_"]:hover [class*="st-key-flyout_"] {display: flex;}
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button {
-        padding: .6rem .8rem !important; background-color: transparent !important;
+    div.st-key-nav > div {width: auto !important; flex: 0 0 auto;}
+    div.st-key-nav .nav-logo {height: 40px; width: auto; border-radius: 6px; margin-right: 1rem; display: block;}
+
+    /* itens simples e botões dentro dos painéis */
+    div.st-key-nav div.stButton > button {
+        background: transparent !important; border: none !important; box-shadow: none !important;
+        border-radius: 6px !important; padding: .55rem .95rem !important; white-space: nowrap;
+        justify-content: flex-start; text-align: left;
     }
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button * {
-        color: #1E3A8A !important; font-weight: 500 !important;
+    div.st-key-nav div.stButton > button * {
+        color: #1F2937 !important; font-weight: 600 !important; font-size: .95rem;
+        justify-content: flex-start; text-align: left;
     }
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button:hover {
-        background-color: #E8EEFB !important;
+    div.st-key-nav div.stButton > button:hover {background: #E8EEFB !important;}
+    div.st-key-nav div.stButton > button:hover * {color: #1E3A8A !important;}
+    div.st-key-nav div.stButton > button[kind="primary"],
+    div.st-key-nav div.stButton > button[data-testid="stBaseButton-primary"] {
+        background: #E8EEFB !important; box-shadow: inset 0 -3px 0 #1E3A8A !important;
     }
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[kind="primary"],
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[data-testid="stBaseButton-primary"] {
-        background-color: #E8EEFB !important;
+    div.st-key-nav div.stButton > button[kind="primary"] *,
+    div.st-key-nav div.stButton > button[data-testid="stBaseButton-primary"] * {color: #1E3A8A !important;}
+
+    /* títulos de grupo (abrem o painel ao passar o mouse) */
+    div.st-key-nav .nav-rot {
+        padding: .55rem .95rem; font-weight: 600; font-size: .95rem; color: #1F2937;
+        border-radius: 6px; cursor: default; white-space: nowrap;
     }
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[kind="primary"] *,
-    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[data-testid="stBaseButton-primary"] * {
-        font-weight: 700 !important;
+    div.st-key-nav .nav-rot.ativo {color: #1E3A8A; background: #E8EEFB; box-shadow: inset 0 -3px 0 #1E3A8A;}
+    div.st-key-nav [class*="st-key-ntop_"]:hover .nav-rot {background: #E8EEFB; color: #1E3A8A;}
+
+    /* painel que desce do título */
+    div.st-key-nav [class*="st-key-ntop_"], div.st-key-nav [class*="st-key-nsub_"] {position: relative;}
+    div.st-key-nav [class*="st-key-ndrop_"], div.st-key-nav [class*="st-key-nfly_"] {
+        display: none; position: absolute; min-width: 270px; background: #FFFFFF;
+        border: 1px solid #DDE3EC; border-radius: 0 0 10px 10px; padding: .4rem; gap: .1rem;
+        box-shadow: 0 14px 30px rgba(15,23,42,.18);
     }
+    div.st-key-nav [class*="st-key-ndrop_"] {top: 100%; left: 0; border-top: 3px solid #1E3A8A; z-index: 1001;}
+    div.st-key-nav [class*="st-key-nfly_"] {top: -.4rem; left: 100%; border-radius: 10px; z-index: 1002;
+        border-top: 3px solid #1E3A8A;}
+    div.st-key-nav [class*="st-key-ntop_"]:hover [class*="st-key-ndrop_"],
+    div.st-key-nav [class*="st-key-nsub_"]:hover [class*="st-key-nfly_"] {display: flex;}
+    div.st-key-nav [class*="st-key-ndrop_"] [data-testid="stElementContainer"],
+    div.st-key-nav [class*="st-key-nfly_"] [data-testid="stElementContainer"] {width: 100% !important;}
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button *,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button * {font-weight: 500 !important;}
+
+    /* usuário e sair, à direita */
+    div.st-key-nav div.st-key-nav_usuario {
+        margin-left: auto; display: flex !important; flex-direction: row !important;
+        align-items: center; gap: .7rem !important;
+    }
+    div.st-key-nav .nav-ola {font-size: .9rem; color: #475569; white-space: nowrap;}
+    div.st-key-nav div.st-key-nav_sair div.stButton > button {border: 1.5px solid #1E3A8A !important;}
+
+    .rodape {text-align: center; font-size: .8rem; color: #6B7280; margin-top: 2.5rem;}
 </style>
 """
 st.markdown(ESTILO, unsafe_allow_html=True)
 
-# Cada item do menu é (nome, subabas). Quem tem subabas mostra a caixa em cascata ao passar o mouse.
-# Cada subaba é (rótulo, etapa); a etapa fica em st.session_state["etapa_portal"].
-SUB_NOVO_MEMBRO = [
-    ("Inserção no ROL de Membros", "rol"),
-    ("Entrada por Batismo", "Batismo"),
-    ("Entrada por Transferência", "Transferência"),
-]
+# Menu: cada nó tem "rotulo" e, se for uma página, "pagina" (e "etapa" para subpáginas).
+# Nós com "filhos" abrem um painel ao passar o mouse; filhos com "filhos" abrem um segundo painel ao lado.
+# A etapa fica em st.session_state["etapa_portal"].
 MENU = [
-    (None, [("Início", None)]),
-    ("GESTÃO DA CONGREGAÇÃO", [("Membros", None), ("Novo membro", SUB_NOVO_MEMBRO),
-                               ("Departamentos", None), ("Eventos internos", None)]),
-    ("CALENDÁRIO", [("Pedir remarcação", None)]),
-    ("MINHA CONGREGAÇÃO", [("Minha congregação", None), ("Minha conta", None)]),
+    {"rotulo": "Início", "pagina": "Início"},
+    {"rotulo": "Gestão", "filhos": [
+        {"rotulo": "Membros", "pagina": "Membros"},
+        {"rotulo": "Novo membro", "pagina": "Novo membro", "filhos": [
+            {"rotulo": "Inserção no ROL de Membros", "pagina": "Novo membro", "etapa": "rol"},
+            {"rotulo": "Entrada por Batismo", "pagina": "Novo membro", "etapa": "Batismo"},
+            {"rotulo": "Entrada por Transferência", "pagina": "Novo membro", "etapa": "Transferência"},
+        ]},
+        {"rotulo": "Departamentos", "pagina": "Departamentos"},
+        {"rotulo": "Eventos internos", "pagina": "Eventos internos"},
+    ]},
+    {"rotulo": "Calendário", "pagina": "Pedir remarcação"},
+    {"rotulo": "Minha congregação", "filhos": [
+        {"rotulo": "Dados da congregação", "pagina": "Minha congregação"},
+        {"rotulo": "Minha conta", "pagina": "Minha conta"},
+    ]},
 ]
-PAGINAS = [nome for _, itens in MENU for nome, _ in itens]
+
+
+def _paginas_do_menu(nos):
+    for no in nos:
+        if no.get("pagina"):
+            yield no["pagina"]
+        yield from _paginas_do_menu(no.get("filhos", []))
+
+
+PAGINAS = set(_paginas_do_menu(MENU))
 OPCOES_ENTRADA = [
     ("rol", "Inserção no ROL de Membros", "Cadastro do membro no ROL, sem gerar ficha."),
     ("Batismo", "Entrada por Batismo", "Ficha de entrada de quem foi batizado, com PDF para imprimir."),
@@ -783,38 +836,53 @@ def _ir_para(pagina, etapa):
     st.rerun()
 
 
-def _barra_lateral(conta, com_menu):
-    with st.sidebar:
-        st.markdown(
-            f'<div class="sb-topo"><img class="sb-logo" src="{LOGO_URL}" alt="Logo">'
-            '<div class="sb-titulo">Portal da Congregação</div>'
-            f'<div class="sb-sub">{html.escape(conta["congregacao"]) if conta else "Sistema das congregações MEN"}</div></div>',
-            unsafe_allow_html=True)
-        if conta and com_menu:
-            st.markdown(f'<div class="sb-usuario">Olá, <b>{html.escape(conta["nome"])}</b></div>', unsafe_allow_html=True)
-            for grupo, itens in MENU:
-                if grupo:
-                    st.markdown(f'<div class="sb-grupo">{grupo}</div>', unsafe_allow_html=True)
-                for nome, subs in itens:
-                    ativa = st.session_state["pagina_portal"] == nome
-                    tipo_btn = "primary" if ativa else "secondary"
-                    if not subs:
-                        if st.button(nome, key=f"menu_{nome}", type=tipo_btn, use_container_width=True):
-                            _ir_para(nome, None)
-                        continue
-                    chave = f"{len(PAGINAS)}_{PAGINAS.index(nome)}"
-                    with st.container(key=f"grp_{chave}"):
-                        if st.button(f"{nome}  ▸", key=f"menu_{nome}", type=tipo_btn, use_container_width=True):
-                            _ir_para(nome, None)
-                        with st.container(key=f"flyout_{chave}"):
-                            for rotulo, etapa in subs:
-                                sel = ativa and st.session_state.get("etapa_portal") == etapa
-                                if st.button(rotulo, key=f"opc_{nome}_{etapa}",
-                                             type="primary" if sel else "secondary", use_container_width=True):
-                                    _ir_para(nome, etapa)
-        st.markdown("---")
-        st.markdown('<div class="sb-contato">Desenvolvido por <b>Rodolfo Crystian</b><br>'
-                    'rcrystiandados@gmail.com<br>WhatsApp: (83) 9 9962-3735</div>', unsafe_allow_html=True)
+def _contem(no, pagina):
+    return no.get("pagina") == pagina or any(_contem(f, pagina) for f in no.get("filhos", []))
+
+
+def _botao_nav(rotulo, chave, ativo, pagina, etapa, largura=False):
+    if st.button(rotulo, key=chave, type="primary" if ativo else "secondary", use_container_width=largura):
+        _ir_para(pagina, etapa)
+
+
+def _barra_nav(conta):
+    atual = st.session_state["pagina_portal"]
+    etapa_atual = st.session_state.get("etapa_portal")
+    with st.container(key="nav"):
+        st.markdown(f'<img class="nav-logo" src="{LOGO_URL}" alt="Logo">', unsafe_allow_html=True)
+        for i, no in enumerate(MENU):
+            filhos = no.get("filhos")
+            ativo = _contem(no, atual)
+            if not filhos:
+                _botao_nav(no["rotulo"], f"nav_{i}", ativo, no["pagina"], None)
+                continue
+            with st.container(key=f"ntop_{i}"):
+                st.markdown(f'<div class="nav-rot{" ativo" if ativo else ""}">{html.escape(no["rotulo"])} ▾</div>',
+                            unsafe_allow_html=True)
+                with st.container(key=f"ndrop_{i}"):
+                    for j, f in enumerate(filhos):
+                        if not f.get("filhos"):
+                            _botao_nav(f["rotulo"], f"nav_{i}_{j}", atual == f["pagina"], f["pagina"], None, True)
+                            continue
+                        with st.container(key=f"nsub_{i}_{j}"):
+                            _botao_nav(f"{f['rotulo']}  ▸", f"nav_{i}_{j}", atual == f["pagina"], f["pagina"],
+                                       None, True)
+                            with st.container(key=f"nfly_{i}_{j}"):
+                                for l, sf in enumerate(f["filhos"]):
+                                    sel = atual == sf["pagina"] and etapa_atual == sf.get("etapa")
+                                    _botao_nav(sf["rotulo"], f"nav_{i}_{j}_{l}", sel, sf["pagina"],
+                                               sf.get("etapa"), True)
+        with st.container(key="nav_usuario"):
+            st.markdown(f'<span class="nav-ola">Olá, <b>{html.escape(conta["nome"])}</b></span>',
+                        unsafe_allow_html=True)
+            if st.button("Sair", key="nav_sair"):
+                _sair()
+                st.rerun()
+
+
+def _rodape():
+    st.markdown('<div class="rodape">Desenvolvido por <b>Rodolfo Crystian</b> · rcrystiandados@gmail.com · '
+                'WhatsApp: (83) 9 9962-3735</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -835,19 +903,14 @@ st.session_state.setdefault("pagina_portal", "Início")
 if st.session_state["pagina_portal"] not in PAGINAS:
     st.session_state["pagina_portal"] = "Início"
 
-_barra_lateral(conta, com_menu=bool(conta) and not conta["trocar_senha"])
-
 if conta is None:
     tela_acesso(banco)
 elif conta["trocar_senha"]:
     tela_troca_obrigatoria(banco, conta)
 else:
     pagina = st.session_state["pagina_portal"]
-    t1, t2 = st.columns([5, 1], vertical_alignment="center")
-    t1.markdown(f'<h1 class="titulo-sem-linha">{pagina}</h1>', unsafe_allow_html=True)
-    if t2.button("Sair", key="sair_topo", use_container_width=True):
-        _sair()
-        st.rerun()
+    _barra_nav(conta)
+    st.markdown(f'<h1 class="titulo-sem-linha">{pagina}</h1>', unsafe_allow_html=True)
     st.markdown('<hr class="linha-titulo">', unsafe_allow_html=True)
 
     calendario = _carregar_calendario() if pagina in ("Início", "Pedir remarcação", "Eventos internos") else None
@@ -864,3 +927,5 @@ else:
         pagina_novo_membro(banco, conta)
     elif pagina in PAGINAS_GESTAO:
         gestao.renderizar_congregacao(pagina, conta["congregacao_id"], calendario)
+
+_rodape()
