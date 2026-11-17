@@ -9,12 +9,14 @@ campo da tela.
 """
 import html
 import re
+from datetime import date
 
 import pandas as pd
 import streamlit as st
 
 import agenda
 import contas_congregacao as contas
+import ficha_membro
 import gestao
 import gestao_db as db
 import portal_db
@@ -244,7 +246,7 @@ MENU = [
     ("MINHA CONGREGAÇÃO", ["Minha congregação", "Minha conta"]),
 ]
 PAGINAS = [i for _, itens in MENU for i in itens]
-PAGINAS_GESTAO = ("Membros", "Novo membro", "Departamentos", "Eventos internos")
+PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos")
 ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
                  "recusado": "Recusado", "cancelado": "Cancelado por você"}
 
@@ -256,6 +258,7 @@ ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
 @st.cache_resource(show_spinner=False)
 def _preparar(_banco):
     portal_db.criar_tabelas(_banco)
+    ficha_membro.criar_tabela(_banco)
     return True
 
 
@@ -502,6 +505,154 @@ def _formulario_pedido(banco, conta, alvo, regs):
 
 
 # ---------------------------------------------------------------------------
+# Novo membro: ficha de entrada (batismo ou transferência) com PDF
+# ---------------------------------------------------------------------------
+def _botao_pdf(rotulo, dados, tipo, chave):
+    nome = db._sem_acento(dados.get("nome") or "em_branco").replace(" ", "_")
+    arquivo = f"ficha_{db._sem_acento(tipo)}_{nome}.pdf"
+    st.download_button(rotulo, data=ficha_membro.gerar_pdf(dados, tipo), file_name=arquivo,
+                       mime="application/pdf", key=chave)
+
+
+def pagina_novo_membro(banco, conta):
+    modo = st.radio("Como deseja cadastrar?", ["Ficha de entrada (batismo ou transferência)", "Cadastro rápido"],
+                    horizontal=True, key="nm_modo", label_visibility="collapsed")
+    if modo.startswith("Ficha"):
+        _ficha_entrada(banco, conta)
+    else:
+        gestao.renderizar_congregacao("Novo membro", conta["congregacao_id"], None)
+
+
+def _ficha_entrada(banco, conta):
+    cid = conta["congregacao_id"]
+    st.caption(gestao.AVISO_PORTAL)
+    msg = st.session_state.pop("fn_msg", None)
+    if msg:
+        st.success(msg)
+    ultimo = st.session_state.get("fn_ultimo")
+    if ultimo:
+        d = ficha_membro.obter_ficha(banco, ultimo["membro_id"], cid)
+        if d:
+            _botao_pdf(f"Baixar a ficha em PDF: {d['nome']}", d, ultimo["tipo"], "fn_dl_ultimo")
+
+    with st.expander("Ficha em branco, para imprimir e preencher à mão"):
+        b1, b2 = st.columns(2)
+        with b1:
+            _botao_pdf("Ficha de Batismo (em branco)", {}, "Batismo", "fn_branco_b")
+        with b2:
+            _botao_pdf("Ficha de Transferência (em branco)", {}, "Transferência", "fn_branco_t")
+
+    st.markdown("#### Nova ficha de membro")
+    v = st.session_state.get("fn_v", 0)
+    k = lambda nome: f"fn_{nome}_{v}"
+    tipo = st.radio("Tipo de entrada", list(ficha_membro.TIPOS), horizontal=True, key=k("tipo"))
+
+    c1, c2 = st.columns([1, 2])
+    local_tipo = c1.radio("A entrada é na", list(ficha_membro.LOCAIS), horizontal=True, key=k("local"))
+    local_nome = c2.text_input("Qual?", value=conta["congregacao"] if local_tipo == "Congregação" else "",
+                               key=k("local_nome") + local_tipo)
+
+    nome = st.text_input("Nome completo", key=k("nome"))
+    c1, c2, c3 = st.columns(3)
+    nasc = c1.date_input("Data de nascimento", value=None, min_value=date(1900, 1, 1), max_value=date.today(),
+                         format="DD/MM/YYYY", key=k("nasc"))
+    conversao = c2.date_input("Data de sua conversão", value=None, min_value=date(1900, 1, 1),
+                              max_value=date.today(), format="DD/MM/YYYY", key=k("conv"))
+    sexos = ["", "Masculino", "Feminino"]
+    sexo = c3.selectbox("Sexo", sexos, key=k("sexo"))
+
+    estado_civil = st.radio("Estado civil", list(ficha_membro.ESTADOS_CIVIS), index=None, horizontal=True,
+                            key=k("ec"))
+    conjuge = ""
+    if estado_civil == "Casado civilmente":
+        st.caption("Caso esteja casado civilmente, trazer uma cópia da certidão de casamento.")
+        conjuge = st.text_input("Nome do cônjuge", key=k("conj"))
+
+    c1, c2 = st.columns(2)
+    pai = c1.text_input("Nome do pai", key=k("pai"))
+    mae = c2.text_input("Nome da mãe", key=k("mae"))
+    c1, c2, c3 = st.columns([1, 2, 1])
+    nacionalidade = c1.text_input("Nacionalidade", value="Brasileira", key=k("nac"))
+    cidade = c2.text_input("Cidade onde nasceu", key=k("cidade"))
+    uf = c3.text_input("Estado", key=k("uf"), max_chars=2, placeholder="PB")
+    residencia = st.text_input("Residência (endereço completo)", key=k("res"))
+
+    chave_tel = k("tel")
+    if chave_tel not in st.session_state:
+        st.session_state[chave_tel] = ""
+    c1, c2, c3 = st.columns(3)
+    email = c1.text_input("E-mail", key=k("email"))
+    telefone = c2.text_input("Telefone / WhatsApp", key=chave_tel, placeholder="(83) 9 9999-9999",
+                             on_change=gestao._fmt_telefone, args=(chave_tel,))
+    profissao = c3.text_input("Profissão", key=k("prof"))
+
+    c1, c2 = st.columns(2)
+    batismo = c1.date_input("Batismo em", value=None, min_value=date(1900, 1, 1), format="DD/MM/YYYY", key=k("bat"))
+    batizado_por = c2.text_input("Batizado pelo Rev.", key=k("revb"))
+
+    igreja_origem = pastor = funcao = ""
+    exercia = None
+    if tipo == "Transferência":
+        c1, c2 = st.columns(2)
+        igreja_origem = c1.text_input("Está vindo de qual igreja?", key=k("igr"))
+        pastor = c2.text_input("Nome do pastor", key=k("pastor"))
+        exercia = st.radio("Exercia alguma função nesta igreja?", ["Sim", "Não"], index=None, horizontal=True,
+                           key=k("exer"))
+        if exercia == "Sim":
+            funcao = st.text_input("Qual função?", key=k("func"))
+
+    inicio = st.date_input("Início como membro da IECCG (preenchido pela secretaria)", value=None,
+                           min_value=date(1900, 1, 1), format="DD/MM/YYYY", key=k("ini"))
+    st.caption("Se deixar o início em branco, o cadastro usa a data de hoje como entrada e o campo "
+               "sai em branco na ficha, para a secretaria preencher.")
+
+    if st.button("Salvar membro e gerar a ficha", key=k("salvar")):
+        dados_membro = {"congregacao_id": cid, "nome": nome.strip(), "data_nascimento": nasc, "sexo": sexo,
+                        "telefone": telefone.strip(), "email": email.strip(), "cargo": "Membro",
+                        "situacao": "Ativo", "data_entrada": inicio or date.today(), "data_batismo": batismo}
+        erro = gestao._validar_membro(dados_membro)
+        if erro:
+            st.error(erro)
+        elif db.membro_existe(banco, cid, dados_membro["nome"], nasc):
+            st.error("Já existe um membro com este nome e data de nascimento nesta congregação.")
+        else:
+            membro_id = db.criar_membro(banco, dados_membro)
+            try:
+                ficha_membro.salvar_ficha(banco, membro_id, cid, {
+                    "tipo": tipo, "local_tipo": local_tipo, "local_nome": local_nome,
+                    "data_conversao": conversao, "estado_civil": estado_civil, "nome_conjuge": conjuge,
+                    "nome_pai": pai, "nome_mae": mae, "nacionalidade": nacionalidade, "cidade_natal": cidade,
+                    "estado_natal": uf.upper(), "residencia": residencia, "profissao": profissao,
+                    "batizado_por": batizado_por, "igreja_origem": igreja_origem, "pastor_origem": pastor,
+                    "exercia_funcao": exercia, "funcao_anterior": funcao, "inicio_membro": inicio})
+            except Exception as erro_ficha:
+                st.error(f"O membro foi cadastrado, mas a ficha não foi salva: {erro_ficha}")
+            else:
+                st.session_state["fn_ultimo"] = {"membro_id": membro_id, "tipo": tipo}
+                st.session_state["fn_v"] = v + 1
+                st.session_state["fn_msg"] = (f"{dados_membro['nome']} foi cadastrado(a). "
+                                              "Baixe a ficha em PDF logo abaixo.")
+                st.rerun()
+
+    st.markdown("#### Gerar a ficha de um membro já cadastrado")
+    membros = db.listar_membros(banco, cid)
+    if not membros:
+        st.caption("Ainda não há membros cadastrados nesta congregação.")
+        return
+    por_id = {m["id"]: m for m in membros}
+    mid = st.selectbox("Membro", list(por_id.keys()), format_func=lambda i: por_id[i]["nome"], key="fn_sel")
+    d = ficha_membro.obter_ficha(banco, mid, cid)
+    if d is None:
+        return
+    padrao = ficha_membro.TIPOS.index(d["tipo"]) if d.get("tipo") in ficha_membro.TIPOS else 0
+    tipo2 = st.radio("Modelo da ficha", list(ficha_membro.TIPOS), index=padrao, horizontal=True,
+                     key=f"fn_tipo2_{mid}")
+    if not d.get("tipo"):
+        st.caption("Este membro não tem ficha salva: ela sai com os dados do cadastro e o restante em branco.")
+    _botao_pdf(f"Baixar a ficha de {d['nome']}", d, tipo2, f"fn_dl_{mid}")
+
+
+# ---------------------------------------------------------------------------
 # Minha congregação
 # ---------------------------------------------------------------------------
 def pagina_minha_congregacao(banco, conta):
@@ -633,5 +784,7 @@ else:
         pagina_minha_congregacao(banco, conta)
     elif pagina == "Minha conta":
         pagina_minha_conta(banco, conta)
+    elif pagina == "Novo membro":
+        pagina_novo_membro(banco, conta)
     elif pagina in PAGINAS_GESTAO:
         gestao.renderizar_congregacao(pagina, conta["congregacao_id"], calendario)
