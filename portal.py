@@ -171,44 +171,62 @@ ESTILO = """<style>
 
     div.st-key-nav {
         position: sticky; top: .5rem; z-index: 1000;
-        display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center;
+        display: flex !important; flex-direction: row !important; flex-wrap: wrap;
+        align-items: center !important;
         gap: .35rem !important; background: var(--azul); border: none; border-radius: 10px;
-        box-shadow: 0 4px 14px rgba(30,58,138,.25); padding: .6rem 1.2rem; margin-bottom: 1.6rem;
+        box-shadow: 0 4px 14px rgba(30,58,138,.25); padding: .55rem 1.2rem; margin-bottom: 1.6rem;
+        width: 100% !important;
     }
-    div.st-key-nav > div {width: auto !important; flex: 0 0 auto;}
+    div.st-key-nav > div {
+        width: auto !important; flex: 0 0 auto !important;
+        margin: 0 !important;
+    }
+    div.st-key-nav [data-testid="stMarkdownContainer"] {
+        margin: 0 !important; padding: 0 !important;
+        display: flex !important; align-items: center !important;
+    }
+    div.st-key-nav [data-testid="stMarkdownContainer"] p {
+        margin: 0 !important;
+    }
 
     /* Logo no canto esquerdo */
     div.st-key-nav .nav-logo {
-        height: 46px; width: auto; background: #FFFFFF; padding: 4px 10px;
-        border-radius: 8px; margin-right: 1.2rem; display: block;
+        height: 44px; width: auto; background: #FFFFFF; padding: 4px 10px;
+        border-radius: 8px; margin-right: .8rem; display: block;
     }
 
     /* Botões de primeiro nível na barra azul */
     div.st-key-nav div.stButton > button {
         background: transparent !important; border: none !important; box-shadow: none !important;
-        border-radius: 6px !important; padding: .55rem .95rem !important; white-space: nowrap;
-        justify-content: flex-start; text-align: left;
+        border-radius: 6px !important; padding: .45rem .85rem !important;
+        min-height: 2.3rem !important; white-space: nowrap;
+        display: inline-flex !important; align-items: center !important;
+        justify-content: center; text-align: center;
     }
     div.st-key-nav div.stButton > button * {
-        color: #FFFFFF !important; font-weight: 600 !important; font-size: .92rem;
+        color: #FFFFFF !important; font-weight: 600 !important; font-size: .9rem !important;
         text-transform: uppercase; letter-spacing: .02em;
-        justify-content: flex-start; text-align: left;
     }
-    div.st-key-nav div.stButton > button:hover {background: rgba(255,255,255,.15) !important;}
+    div.st-key-nav div.stButton > button:hover {
+        background: rgba(255,255,255,.15) !important;
+    }
     div.st-key-nav div.stButton > button[kind="primary"],
     div.st-key-nav div.stButton > button[data-testid="stBaseButton-primary"] {
-        background: rgba(255,255,255,.12) !important;
+        background: transparent !important;
+        border-radius: 0 !important;
         box-shadow: inset 0 -3px 0 #FFFFFF !important;
     }
 
-    /* Rótulos de grupos que abrem menu suspenso (ex.: MEMBRESIA, MINHA CONGREGAÇÃO) */
+    /* Rótulos de grupos que abrem menu suspenso (MEMBRESIA, MINHA CONGREGAÇÃO) */
     div.st-key-nav .nav-rot {
-        padding: .55rem .95rem; font-weight: 600; font-size: .92rem; color: #FFFFFF;
+        padding: .45rem .85rem; min-height: 2.3rem;
+        display: inline-flex; align-items: center;
+        font-weight: 600; font-size: .9rem; color: #FFFFFF;
         text-transform: uppercase; letter-spacing: .02em;
         border-radius: 6px; cursor: pointer; white-space: nowrap;
     }
     div.st-key-nav .nav-rot.ativo {
-        background: rgba(255,255,255,.12);
+        border-radius: 0;
         box-shadow: inset 0 -3px 0 #FFFFFF;
     }
     div.st-key-nav [class*="st-key-ntop_"]:hover .nav-rot {
@@ -236,11 +254,13 @@ ESTILO = """<style>
     div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button,
     div.st-key-nav [class*="st-key-nfly_"] div.stButton > button {
         background: transparent !important; box-shadow: none !important;
+        border-radius: 6px !important; justify-content: flex-start !important; text-align: left !important;
     }
     div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button *,
     div.st-key-nav [class*="st-key-nfly_"] div.stButton > button * {
         color: #1F2937 !important; font-weight: 500 !important;
         text-transform: none !important; letter-spacing: normal !important;
+        justify-content: flex-start !important; text-align: left !important;
     }
     div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button:hover,
     div.st-key-nav [class*="st-key-nfly_"] div.stButton > button:hover {
@@ -263,20 +283,27 @@ ESTILO = """<style>
         color: var(--azul) !important; font-weight: 700 !important;
     }
 
-    /* Usuário e botão Sair no canto direito */
-    div.st-key-nav div.st-key-nav_usuario {
-        margin-left: auto; display: flex !important; flex-direction: row !important;
-        align-items: center; gap: .85rem !important;
+    /* Saudação e botão SAIR alinhados no canto direito sem sobreposição */
+    div.st-key-nav > div:has(.nav-ola) {
+        margin-left: auto !important;
     }
-    div.st-key-nav .nav-ola {font-size: .95rem; color: #FFFFFF; white-space: nowrap;}
-    div.st-key-nav div.st-key-nav_sair div.stButton > button {
+    div.st-key-nav .nav-ola {
+        font-size: .92rem; color: #FFFFFF; white-space: nowrap;
+        padding: 0 .5rem; min-height: 2.3rem;
+        display: inline-flex; align-items: center;
+    }
+    div.st-key-nav .st-key-nav_sair div.stButton > button,
+    div.st-key-nav div.st-key-nav_sair > button {
         border: 1.5px solid #FFFFFF !important; border-radius: 6px !important;
-        padding: .45rem 1.1rem !important; background: transparent !important;
+        padding: .4rem 1rem !important; min-height: 2.2rem !important;
+        background: transparent !important; box-shadow: none !important;
     }
-    div.st-key-nav div.st-key-nav_sair div.stButton > button:hover {
+    div.st-key-nav .st-key-nav_sair div.stButton > button:hover,
+    div.st-key-nav div.st-key-nav_sair > button:hover {
         background: #FFFFFF !important;
     }
-    div.st-key-nav div.st-key-nav_sair div.stButton > button:hover * {
+    div.st-key-nav .st-key-nav_sair div.stButton > button:hover *,
+    div.st-key-nav div.st-key-nav_sair > button:hover * {
         color: var(--azul) !important;
     }
 
@@ -320,7 +347,7 @@ OPCOES_ENTRADA = [
     ("Batismo", "Entrada por Batismo", "Ficha de entrada de quem foi batizado, com PDF para imprimir."),
     ("Transferência", "Entrada por Transferência", "Ficha de entrada de quem vem de outra igreja, com PDF."),
 ]
-PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos", "Financeiro")
+PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos")
 ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
                  "recusado": "Recusado", "cancelado": "Cancelado por você"}
 
@@ -739,6 +766,13 @@ def _ficha_entrada(banco, conta, tipo):
 
 
 # ---------------------------------------------------------------------------
+# Financeiro
+# ---------------------------------------------------------------------------
+def pagina_financeiro(banco, conta):
+    st.info("Módulo financeiro em desenvolvimento. Em breve você poderá registar entradas, saídas e relatórios aqui.")
+
+
+# ---------------------------------------------------------------------------
 # Minha congregação
 # ---------------------------------------------------------------------------
 def pagina_minha_congregacao(banco, conta):
@@ -822,6 +856,8 @@ def _botao_nav(rotulo, chave, ativo, pagina, etapa, largura=False):
 def _barra_nav(conta):
     atual = st.session_state["pagina_portal"]
     etapa_atual = st.session_state.get("etapa_portal")
+    primeiro_nome = (conta.get("nome") or "").strip().split()[0] if conta.get("nome") else ""
+
     with st.container(key="nav"):
         st.markdown(f'<img class="nav-logo" src="{LOGO_URL}" alt="Logo">', unsafe_allow_html=True)
         for i, no in enumerate(MENU):
@@ -846,13 +882,12 @@ def _barra_nav(conta):
                                     sel = atual == sf["pagina"] and etapa_atual == sf.get("etapa")
                                     _botao_nav(sf["rotulo"], f"nav_{i}_{j}_{l}", sel, sf["pagina"],
                                                sf.get("etapa"), True)
-        with st.container(key="nav_usuario"):
-            st.markdown(f'<span class="nav-ola">Olá, <b>{html.escape(conta["nome"])}</b></span>',
-                        unsafe_allow_html=True)
-            with st.container(key="nav_sair"):
-                if st.button("SAIR", key="btn_sair"):
-                    _sair()
-                    st.rerun()
+
+        st.markdown(f'<div class="nav-ola">Olá, <b>{html.escape(primeiro_nome)}</b></div>',
+                    unsafe_allow_html=True)
+        if st.button("SAIR", key="nav_sair"):
+            _sair()
+            st.rerun()
 
 
 def _rodape():
@@ -892,6 +927,8 @@ else:
 
     if pagina == "Início":
         pagina_inicio(banco, conta, calendario)
+    elif pagina == "Financeiro":
+        pagina_financeiro(banco, conta)
     elif pagina == "Pedir remarcação":
         pagina_remarcacao(banco, conta, calendario)
     elif pagina == "Minha congregação":
