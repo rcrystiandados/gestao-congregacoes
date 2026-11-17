@@ -235,17 +235,62 @@ ESTILO = """<style>
     .sb-grupo {font-size: .72rem; letter-spacing: .1em; font-weight: 700; opacity: .7;
                margin: 1rem 0 .25rem .5rem;}
     .sb-usuario {font-size: .9rem; margin: .2rem 0 .4rem .5rem; opacity: .9;}
+
+    /* ---------- Menu em cascata: submenus aparecem ao passar o mouse ---------- */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div,
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {overflow: visible !important;}
+    section[data-testid="stSidebar"] {z-index: 1000000;}
+    section[data-testid="stSidebar"] [class*="st-key-grp_"] {position: relative;}
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] {
+        display: none; position: absolute; top: 0; left: 100%; width: 250px;
+        background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(15,23,42,.22); padding: .35rem; gap: .15rem; z-index: 1000001;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-grp_"]:hover [class*="st-key-flyout_"] {display: flex;}
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button {
+        padding: .6rem .8rem !important; background-color: transparent !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button * {
+        color: #1E3A8A !important; font-weight: 500 !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button:hover {
+        background-color: #E8EEFB !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[kind="primary"],
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[data-testid="stBaseButton-primary"] {
+        background-color: #E8EEFB !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[kind="primary"] *,
+    section[data-testid="stSidebar"] [class*="st-key-flyout_"] div.stButton > button[data-testid="stBaseButton-primary"] * {
+        font-weight: 700 !important;
+    }
 </style>
 """
 st.markdown(ESTILO, unsafe_allow_html=True)
 
-MENU = [
-    (None, ["Início"]),
-    ("GESTÃO DA CONGREGAÇÃO", ["Membros", "Novo membro", "Departamentos", "Eventos internos"]),
-    ("CALENDÁRIO", ["Pedir remarcação"]),
-    ("MINHA CONGREGAÇÃO", ["Minha congregação", "Minha conta"]),
+# Cada item do menu é (nome, subabas). Quem tem subabas mostra a caixa em cascata ao passar o mouse.
+# Cada subaba é (rótulo, etapa); a etapa fica em st.session_state["etapa_portal"].
+SUB_NOVO_MEMBRO = [
+    ("Inserção no ROL de Membros", "rol"),
+    ("Entrada por Batismo", "Batismo"),
+    ("Entrada por Transferência", "Transferência"),
 ]
-PAGINAS = [i for _, itens in MENU for i in itens]
+MENU = [
+    (None, [("Início", None)]),
+    ("GESTÃO DA CONGREGAÇÃO", [("Membros", None), ("Novo membro", SUB_NOVO_MEMBRO),
+                               ("Departamentos", None), ("Eventos internos", None)]),
+    ("CALENDÁRIO", [("Pedir remarcação", None)]),
+    ("MINHA CONGREGAÇÃO", [("Minha congregação", None), ("Minha conta", None)]),
+]
+PAGINAS = [nome for _, itens in MENU for nome, _ in itens]
+OPCOES_ENTRADA = [
+    ("rol", "Inserção no ROL de Membros", "Cadastro do membro no ROL, sem gerar ficha."),
+    ("Batismo", "Entrada por Batismo", "Ficha de entrada de quem foi batizado, com PDF para imprimir."),
+    ("Transferência", "Entrada por Transferência", "Ficha de entrada de quem vem de outra igreja, com PDF."),
+]
 PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos")
 ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
                  "recusado": "Recusado", "cancelado": "Cancelado por você"}
@@ -514,16 +559,35 @@ def _botao_pdf(rotulo, dados, tipo, chave):
                        mime="application/pdf", key=chave)
 
 
+def _escolha_tipo_entrada():
+    st.markdown("#### Qual é o tipo de cadastro?")
+    st.caption("Escolha uma opção para abrir a página correspondente.")
+    for col, (etapa, titulo, texto) in zip(st.columns(3), OPCOES_ENTRADA):
+        with col, st.container(border=True):
+            st.markdown(f"**{titulo}**")
+            st.caption(texto)
+            if st.button("Selecionar", key=f"nm_esc_{etapa}", use_container_width=True):
+                st.session_state["etapa_portal"] = etapa
+                st.rerun()
+
+
 def pagina_novo_membro(banco, conta):
-    modo = st.radio("Como deseja cadastrar?", ["Ficha de entrada (batismo ou transferência)", "Cadastro rápido"],
-                    horizontal=True, key="nm_modo", label_visibility="collapsed")
-    if modo.startswith("Ficha"):
-        _ficha_entrada(banco, conta)
-    else:
+    etapa = st.session_state.get("etapa_portal")
+    if etapa not in [e for e, _, _ in OPCOES_ENTRADA]:
+        _escolha_tipo_entrada()
+        return
+    if st.button("← Trocar o tipo de cadastro", key="nm_voltar"):
+        st.session_state["etapa_portal"] = None
+        st.rerun()
+    if etapa == "rol":
+        # Inserção no ROL: só o cadastro, sem exportação de PDF.
+        st.markdown("#### Inserção no ROL de Membros")
         gestao.renderizar_congregacao("Novo membro", conta["congregacao_id"], None)
+    else:
+        _ficha_entrada(banco, conta, etapa)
 
 
-def _ficha_entrada(banco, conta):
+def _ficha_entrada(banco, conta, tipo):
     cid = conta["congregacao_id"]
     st.caption(gestao.AVISO_PORTAL)
     msg = st.session_state.pop("fn_msg", None)
@@ -536,16 +600,11 @@ def _ficha_entrada(banco, conta):
             _botao_pdf(f"Baixar a ficha em PDF: {d['nome']}", d, ultimo["tipo"], "fn_dl_ultimo")
 
     with st.expander("Ficha em branco, para imprimir e preencher à mão"):
-        b1, b2 = st.columns(2)
-        with b1:
-            _botao_pdf("Ficha de Batismo (em branco)", {}, "Batismo", "fn_branco_b")
-        with b2:
-            _botao_pdf("Ficha de Transferência (em branco)", {}, "Transferência", "fn_branco_t")
+        _botao_pdf(f"Ficha de {tipo} (em branco)", {}, tipo, f"fn_branco_{tipo}")
 
-    st.markdown("#### Nova ficha de membro")
+    st.markdown(f"#### Nova ficha de membro · Entrada por {tipo}")
     v = st.session_state.get("fn_v", 0)
     k = lambda nome: f"fn_{nome}_{v}"
-    tipo = st.radio("Tipo de entrada", list(ficha_membro.TIPOS), horizontal=True, key=k("tipo"))
 
     c1, c2 = st.columns([1, 2])
     local_tipo = c1.radio("A entrada é na", list(ficha_membro.LOCAIS), horizontal=True, key=k("local"))
@@ -718,6 +777,12 @@ def pagina_minha_conta(banco, conta):
 # ---------------------------------------------------------------------------
 # Barra lateral
 # ---------------------------------------------------------------------------
+def _ir_para(pagina, etapa):
+    st.session_state["pagina_portal"] = pagina
+    st.session_state["etapa_portal"] = etapa
+    st.rerun()
+
+
 def _barra_lateral(conta, com_menu):
     with st.sidebar:
         st.markdown(
@@ -730,12 +795,23 @@ def _barra_lateral(conta, com_menu):
             for grupo, itens in MENU:
                 if grupo:
                     st.markdown(f'<div class="sb-grupo">{grupo}</div>', unsafe_allow_html=True)
-                for nome in itens:
+                for nome, subs in itens:
                     ativa = st.session_state["pagina_portal"] == nome
-                    if st.button(nome, key=f"menu_{nome}", type="primary" if ativa else "secondary",
-                                 use_container_width=True):
-                        st.session_state["pagina_portal"] = nome
-                        st.rerun()
+                    tipo_btn = "primary" if ativa else "secondary"
+                    if not subs:
+                        if st.button(nome, key=f"menu_{nome}", type=tipo_btn, use_container_width=True):
+                            _ir_para(nome, None)
+                        continue
+                    chave = f"{len(PAGINAS)}_{PAGINAS.index(nome)}"
+                    with st.container(key=f"grp_{chave}"):
+                        if st.button(f"{nome}  ▸", key=f"menu_{nome}", type=tipo_btn, use_container_width=True):
+                            _ir_para(nome, None)
+                        with st.container(key=f"flyout_{chave}"):
+                            for rotulo, etapa in subs:
+                                sel = ativa and st.session_state.get("etapa_portal") == etapa
+                                if st.button(rotulo, key=f"opc_{nome}_{etapa}",
+                                             type="primary" if sel else "secondary", use_container_width=True):
+                                    _ir_para(nome, etapa)
         st.markdown("---")
         st.markdown('<div class="sb-contato">Desenvolvido por <b>Rodolfo Crystian</b><br>'
                     'rcrystiandados@gmail.com<br>WhatsApp: (83) 9 9962-3735</div>', unsafe_allow_html=True)
