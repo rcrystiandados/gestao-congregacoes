@@ -26,7 +26,7 @@ st.set_page_config(page_title="Portal da Congregação MEN", page_icon="⛪", la
 
 LOGO_URL = "https://github.com/rcrystiandados/app-igreja/blob/main/logo.jpeg?raw=true"
 
-# Mesmo visual do sistema da liderança (azul MEN, menu lateral em botões, campos claros).
+# Mesmo visual do sistema da liderança (azul MEN, barra superior em bloco azul, campos claros).
 ESTILO = """<style>
     :root {
         --azul: #1E3A8A;
@@ -43,7 +43,7 @@ ESTILO = """<style>
 
     /* Conteúdo */
     .block-container {
-        padding: 2.5rem 3rem 4rem 3rem;
+        padding: 1rem 3rem 4rem 3rem;
         max-width: 1200px;
     }
     .block-container h1, .block-container h2, .block-container h3, .block-container h4 {
@@ -54,26 +54,6 @@ ESTILO = """<style>
         margin-bottom: 1.2rem;
     }
     .block-container p, .block-container label, .block-container li {color: var(--texto);}
-
-    /* Barra lateral (menu) */
-    section[data-testid="stSidebar"] {background: var(--azul); border-right: none;}
-    section[data-testid="stSidebar"] * {color: #FFFFFF !important;}
-    .sb-titulo {font-size: 1.2rem; font-weight: 700; line-height: 1.3; margin: .4rem 0 .2rem 0;}
-    .sb-sub {font-size: .85rem; opacity: .75; margin-bottom: 1.4rem;}
-
-    section[data-testid="stSidebar"] div[role="radiogroup"] {gap: .25rem;}
-    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {display: none;}
-    section[data-testid="stSidebar"] div[role="radiogroup"] label {
-        width: 100%; padding: .65rem .9rem; border-radius: 6px;
-        cursor: pointer; transition: background .15s;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {background: rgba(255,255,255,.12);}
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {background: #FFFFFF;}
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) * {
-        color: var(--azul) !important; font-weight: 600;
-    }
-    .sb-contato {font-size: .82rem; line-height: 1.7; opacity: .9;}
-    section[data-testid="stSidebar"] hr {border-color: rgba(255,255,255,.2);}
 
     /* Cartões */
     .card {
@@ -90,7 +70,7 @@ ESTILO = """<style>
     }
     div[data-testid="stMetricValue"] {color: var(--azul);}
 
-    /* Botões */
+    /* Botões padrão do conteúdo */
     div.stButton > button, div.stFormSubmitButton > button, a[data-testid="stBaseLinkButton-secondary"] {
         background-color: var(--azul) !important; color: #FFFFFF !important;
         border: none !important; border-radius: 6px !important;
@@ -102,8 +82,8 @@ ESTILO = """<style>
     }
 
     /* Avisos legíveis */
-    div[data-testid="stAlert"] {border-left: 5px solid var(--azul) !important;}
-    div[data-testid="stAlert"] * {color: var(--texto) !important;}
+    div[data-testid="stAlert"] {border-left: 5px solid var(--azul) !important; background-color: #E8EEFB !important;}
+    div[data-testid="stAlert"] * {background-color: transparent !important; color: #1F2937 !important;}
 
     /* Campos */
     div[data-baseweb="input"], div[data-baseweb="select"] > div, div[data-baseweb="base-input"] {
@@ -113,18 +93,6 @@ ESTILO = """<style>
 
     /* ---------- Correções de tema e componentes ---------- */
     :root, .stApp {color-scheme: light;}
-
-    .sb-topo {text-align: center; margin: .2rem 0 1.2rem 0;}
-    .sb-logo {width: 100%; max-width: 210px; height: auto; border-radius: 8px;
-              background: #FFFFFF; margin-bottom: .8rem;}
-    .sb-topo .sb-titulo {margin: 0;}
-
-    /* Menu: some com as bolinhas do radio */
-    section[data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child,
-    section[data-testid="stSidebar"] label[data-baseweb="radio"] > span:first-child,
-    section[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child:not([data-testid="stMarkdownContainer"]) {
-        display: none !important;
-    }
 
     /* Campos de texto e senha sempre claros */
     div[data-testid="stTextInput"] div[data-baseweb="input"],
@@ -136,10 +104,6 @@ ESTILO = """<style>
     div[data-testid="stTextInput"] div[data-baseweb="input"] {border: 1px solid #CBD5E1 !important;}
     div[data-testid="stTextInput"] svg {fill: #475569 !important;}
 
-    /* Avisos sempre claros e legíveis */
-    div[data-testid="stAlert"] {background-color: #E8EEFB !important;}
-    div[data-testid="stAlert"] * {background-color: transparent !important; color: #1F2937 !important;}
-
     /* Página de login */
     .login-topo {text-align: center; margin: 1.5rem 0 1.2rem 0;}
     .login-topo .login-icone {
@@ -149,28 +113,6 @@ ESTILO = """<style>
     }
     .login-topo h2 {margin: 0 0 .4rem 0;}
     .login-topo p {color: #6B7280 !important; margin: 0;}
-
-    /* ---------- Menu lateral em botões ---------- */
-    section[data-testid="stSidebar"] div.stButton > button {
-        width: 100%; justify-content: flex-start; text-align: left;
-        padding: .65rem .9rem !important; border-radius: 6px !important;
-        background-color: transparent !important; border: none !important;
-        box-shadow: none !important; font-weight: 500 !important;
-    }
-    section[data-testid="stSidebar"] div.stButton > button * {
-        color: #FFFFFF !important; justify-content: flex-start; text-align: left;
-    }
-    section[data-testid="stSidebar"] div.stButton > button:hover {
-        background-color: rgba(255,255,255,.14) !important;
-    }
-    section[data-testid="stSidebar"] div.stButton > button[kind="primary"],
-    section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"] {
-        background-color: #FFFFFF !important;
-    }
-    section[data-testid="stSidebar"] div.stButton > button[kind="primary"] *,
-    section[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"] * {
-        color: #1E3A8A !important; font-weight: 700 !important;
-    }
 
     /* ---------- Selects e listas sempre claros ---------- */
     div[data-baseweb="select"] > div {background-color: #FFFFFF !important; border: 1px solid #CBD5E1 !important;}
@@ -186,13 +128,9 @@ ESTILO = """<style>
     div[data-testid="stDateInput"] div[data-baseweb="input"],
     div[data-testid="stDateInput"] input {background-color: #FFFFFF !important; color: #111827 !important;}
 
-    /* ---------- Título do painel, submenu e botão de link ---------- */
+    /* ---------- Título do painel e botão de link ---------- */
     .block-container h1.titulo-sem-linha {border-bottom: none; padding-bottom: 0; margin: 0;}
     .block-container hr.linha-titulo {border: none; border-top: 2px solid #DDE3EC; margin: .6rem 0 1.4rem 0;}
-
-    section[data-testid="stSidebar"] [class*="st-key-sub_"] button {
-        padding-left: 2rem !important; font-size: .9rem !important;
-    }
 
     .block-container a[data-testid^="stBaseLinkButton"] {
         background: #FFFFFF !important; border: 1.5px solid #1E3A8A !important;
@@ -226,94 +164,131 @@ ESTILO = """<style>
     div[data-testid="stDownloadButton"] button, div[data-testid="stDownloadButton"] button * {color: #FFFFFF !important;}
     div[data-testid="stDownloadButton"] button:hover {background-color: #256649 !important;}
 
-    /* ---------- Blocos da página inicial da liderança ---------- */
-    .adm-card {padding: .2rem .2rem .4rem .2rem;}
-    .adm-tit {font-size: 1.15rem; font-weight: 700; color: #1E3A8A; margin-bottom: .5rem;}
-    .adm-num {font-size: 2.6rem; font-weight: 700; line-height: 1;}
-    .adm-lbl {font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #64748B; margin: .2rem 0 .6rem 0;}
-    .adm-desc {font-size: .92rem; color: #475569; min-height: 2.6rem;}
-    .sb-grupo {font-size: .72rem; letter-spacing: .1em; font-weight: 700; opacity: .7;
-               margin: 1rem 0 .25rem .5rem;}
-    .sb-usuario {font-size: .9rem; margin: .2rem 0 .4rem .5rem; opacity: .9;}
-
-    /* ---------- Barra de navegação superior (sem menu lateral) ---------- */
+    /* ---------- Barra de navegação superior em BLOCO AZUL ---------- */
     section[data-testid="stSidebar"], div[data-testid="stSidebarCollapsedControl"],
     div[data-testid="collapsedControl"] {display: none !important;}
     header[data-testid="stHeader"] {display: none;}
-    .block-container {padding-top: 1rem;}
 
     div.st-key-nav {
         position: sticky; top: .5rem; z-index: 1000;
         display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center;
-        gap: .2rem !important; background: #FFFFFF; border: 1px solid var(--borda); border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(30,58,138,.10); padding: .35rem .8rem; margin-bottom: 1.4rem;
+        gap: .35rem !important; background: var(--azul); border: none; border-radius: 10px;
+        box-shadow: 0 4px 14px rgba(30,58,138,.25); padding: .6rem 1.2rem; margin-bottom: 1.6rem;
     }
     div.st-key-nav > div {width: auto !important; flex: 0 0 auto;}
-    div.st-key-nav .nav-logo {height: 40px; width: auto; border-radius: 6px; margin-right: 1rem; display: block;}
 
-    /* itens simples e botões dentro dos painéis */
+    /* Logo no canto esquerdo */
+    div.st-key-nav .nav-logo {
+        height: 46px; width: auto; background: #FFFFFF; padding: 4px 10px;
+        border-radius: 8px; margin-right: 1.2rem; display: block;
+    }
+
+    /* Botões de primeiro nível na barra azul */
     div.st-key-nav div.stButton > button {
         background: transparent !important; border: none !important; box-shadow: none !important;
         border-radius: 6px !important; padding: .55rem .95rem !important; white-space: nowrap;
         justify-content: flex-start; text-align: left;
     }
     div.st-key-nav div.stButton > button * {
-        color: #1F2937 !important; font-weight: 600 !important; font-size: .95rem;
+        color: #FFFFFF !important; font-weight: 600 !important; font-size: .92rem;
+        text-transform: uppercase; letter-spacing: .02em;
         justify-content: flex-start; text-align: left;
     }
-    div.st-key-nav div.stButton > button:hover {background: #E8EEFB !important;}
-    div.st-key-nav div.stButton > button:hover * {color: #1E3A8A !important;}
+    div.st-key-nav div.stButton > button:hover {background: rgba(255,255,255,.15) !important;}
     div.st-key-nav div.stButton > button[kind="primary"],
     div.st-key-nav div.stButton > button[data-testid="stBaseButton-primary"] {
-        background: #E8EEFB !important; box-shadow: inset 0 -3px 0 #1E3A8A !important;
+        background: rgba(255,255,255,.12) !important;
+        box-shadow: inset 0 -3px 0 #FFFFFF !important;
     }
-    div.st-key-nav div.stButton > button[kind="primary"] *,
-    div.st-key-nav div.stButton > button[data-testid="stBaseButton-primary"] * {color: #1E3A8A !important;}
 
-    /* títulos de grupo (abrem o painel ao passar o mouse) */
+    /* Rótulos de grupos que abrem menu suspenso (ex.: MEMBRESIA, MINHA CONGREGAÇÃO) */
     div.st-key-nav .nav-rot {
-        padding: .55rem .95rem; font-weight: 600; font-size: .95rem; color: #1F2937;
-        border-radius: 6px; cursor: default; white-space: nowrap;
+        padding: .55rem .95rem; font-weight: 600; font-size: .92rem; color: #FFFFFF;
+        text-transform: uppercase; letter-spacing: .02em;
+        border-radius: 6px; cursor: pointer; white-space: nowrap;
     }
-    div.st-key-nav .nav-rot.ativo {color: #1E3A8A; background: #E8EEFB; box-shadow: inset 0 -3px 0 #1E3A8A;}
-    div.st-key-nav [class*="st-key-ntop_"]:hover .nav-rot {background: #E8EEFB; color: #1E3A8A;}
+    div.st-key-nav .nav-rot.ativo {
+        background: rgba(255,255,255,.12);
+        box-shadow: inset 0 -3px 0 #FFFFFF;
+    }
+    div.st-key-nav [class*="st-key-ntop_"]:hover .nav-rot {
+        background: rgba(255,255,255,.15); color: #FFFFFF;
+    }
 
-    /* painel que desce do título */
+    /* Painéis suspensos (dropdowns claros) */
     div.st-key-nav [class*="st-key-ntop_"], div.st-key-nav [class*="st-key-nsub_"] {position: relative;}
     div.st-key-nav [class*="st-key-ndrop_"], div.st-key-nav [class*="st-key-nfly_"] {
-        display: none; position: absolute; min-width: 270px; background: #FFFFFF;
+        display: none; position: absolute; min-width: 260px; background: #FFFFFF;
         border: 1px solid #DDE3EC; border-radius: 0 0 10px 10px; padding: .4rem; gap: .1rem;
         box-shadow: 0 14px 30px rgba(15,23,42,.18);
     }
-    div.st-key-nav [class*="st-key-ndrop_"] {top: 100%; left: 0; border-top: 3px solid #1E3A8A; z-index: 1001;}
-    div.st-key-nav [class*="st-key-nfly_"] {top: -.4rem; left: 100%; border-radius: 10px; z-index: 1002;
-        border-top: 3px solid #1E3A8A;}
+    div.st-key-nav [class*="st-key-ndrop_"] {top: 100%; left: 0; border-top: 3px solid var(--azul); z-index: 1001;}
+    div.st-key-nav [class*="st-key-nfly_"] {
+        top: -.4rem; left: 100%; border-radius: 10px; z-index: 1002;
+        border-top: 3px solid var(--azul);
+    }
     div.st-key-nav [class*="st-key-ntop_"]:hover [class*="st-key-ndrop_"],
     div.st-key-nav [class*="st-key-nsub_"]:hover [class*="st-key-nfly_"] {display: flex;}
     div.st-key-nav [class*="st-key-ndrop_"] [data-testid="stElementContainer"],
     div.st-key-nav [class*="st-key-nfly_"] [data-testid="stElementContainer"] {width: 100% !important;}
-    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button *,
-    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button * {font-weight: 500 !important;}
 
-    /* usuário e sair, à direita */
+    /* Botões internos dos painéis suspensos (fundo claro e texto escuro) */
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button {
+        background: transparent !important; box-shadow: none !important;
+    }
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button *,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button * {
+        color: #1F2937 !important; font-weight: 500 !important;
+        text-transform: none !important; letter-spacing: normal !important;
+    }
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button:hover,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button:hover {
+        background: #E8EEFB !important;
+    }
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button:hover *,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button:hover * {
+        color: var(--azul) !important;
+    }
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button[kind="primary"],
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button[data-testid="stBaseButton-primary"],
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button[kind="primary"],
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button[data-testid="stBaseButton-primary"] {
+        background: #E8EEFB !important; box-shadow: inset 3px 0 0 var(--azul) !important;
+    }
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button[kind="primary"] *,
+    div.st-key-nav [class*="st-key-ndrop_"] div.stButton > button[data-testid="stBaseButton-primary"] *,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button[kind="primary"] *,
+    div.st-key-nav [class*="st-key-nfly_"] div.stButton > button[data-testid="stBaseButton-primary"] * {
+        color: var(--azul) !important; font-weight: 700 !important;
+    }
+
+    /* Usuário e botão Sair no canto direito */
     div.st-key-nav div.st-key-nav_usuario {
         margin-left: auto; display: flex !important; flex-direction: row !important;
-        align-items: center; gap: .7rem !important;
+        align-items: center; gap: .85rem !important;
     }
-    div.st-key-nav .nav-ola {font-size: .9rem; color: #475569; white-space: nowrap;}
-    div.st-key-nav div.st-key-nav_sair div.stButton > button {border: 1.5px solid #1E3A8A !important;}
+    div.st-key-nav .nav-ola {font-size: .95rem; color: #FFFFFF; white-space: nowrap;}
+    div.st-key-nav div.st-key-nav_sair div.stButton > button {
+        border: 1.5px solid #FFFFFF !important; border-radius: 6px !important;
+        padding: .45rem 1.1rem !important; background: transparent !important;
+    }
+    div.st-key-nav div.st-key-nav_sair div.stButton > button:hover {
+        background: #FFFFFF !important;
+    }
+    div.st-key-nav div.st-key-nav_sair div.stButton > button:hover * {
+        color: var(--azul) !important;
+    }
 
     .rodape {text-align: center; font-size: .8rem; color: #6B7280; margin-top: 2.5rem;}
 </style>
 """
 st.markdown(ESTILO, unsafe_allow_html=True)
 
-# Menu: cada nó tem "rotulo" e, se for uma página, "pagina" (e "etapa" para subpáginas).
-# Nós com "filhos" abrem um painel ao passar o mouse; filhos com "filhos" abrem um segundo painel ao lado.
-# A etapa fica em st.session_state["etapa_portal"].
+# Sequência definida: INÍCIO | MEMBRESIA | FINANCEIRO | CALENDÁRIO | MINHA CONGREGAÇÃO
 MENU = [
     {"rotulo": "Início", "pagina": "Início"},
-    {"rotulo": "Gestão", "filhos": [
+    {"rotulo": "Membresia", "filhos": [
         {"rotulo": "Membros", "pagina": "Membros"},
         {"rotulo": "Novo membro", "pagina": "Novo membro", "filhos": [
             {"rotulo": "Inserção no ROL de Membros", "pagina": "Novo membro", "etapa": "rol"},
@@ -323,6 +298,7 @@ MENU = [
         {"rotulo": "Departamentos", "pagina": "Departamentos"},
         {"rotulo": "Eventos internos", "pagina": "Eventos internos"},
     ]},
+    {"rotulo": "Financeiro", "pagina": "Financeiro"},
     {"rotulo": "Calendário", "pagina": "Pedir remarcação"},
     {"rotulo": "Minha congregação", "filhos": [
         {"rotulo": "Dados da congregação", "pagina": "Minha congregação"},
@@ -344,10 +320,9 @@ OPCOES_ENTRADA = [
     ("Batismo", "Entrada por Batismo", "Ficha de entrada de quem foi batizado, com PDF para imprimir."),
     ("Transferência", "Entrada por Transferência", "Ficha de entrada de quem vem de outra igreja, com PDF."),
 ]
-PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos")
+PAGINAS_GESTAO = ("Membros", "Departamentos", "Eventos internos", "Financeiro")
 ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
                  "recusado": "Recusado", "cancelado": "Cancelado por você"}
-
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +608,6 @@ def pagina_novo_membro(banco, conta):
         st.session_state["etapa_portal"] = None
         st.rerun()
     if etapa == "rol":
-        # Inserção no ROL: só o cadastro, sem exportação de PDF.
         st.markdown("#### Inserção no ROL de Membros")
         gestao.renderizar_congregacao("Novo membro", conta["congregacao_id"], None)
     else:
@@ -828,7 +802,7 @@ def pagina_minha_conta(banco, conta):
 
 
 # ---------------------------------------------------------------------------
-# Barra lateral
+# Barra de navegação superior
 # ---------------------------------------------------------------------------
 def _ir_para(pagina, etapa):
     st.session_state["pagina_portal"] = pagina
@@ -875,9 +849,10 @@ def _barra_nav(conta):
         with st.container(key="nav_usuario"):
             st.markdown(f'<span class="nav-ola">Olá, <b>{html.escape(conta["nome"])}</b></span>',
                         unsafe_allow_html=True)
-            if st.button("Sair", key="nav_sair"):
-                _sair()
-                st.rerun()
+            with st.container(key="nav_sair"):
+                if st.button("SAIR", key="btn_sair"):
+                    _sair()
+                    st.rerun()
 
 
 def _rodape():
@@ -894,7 +869,7 @@ if banco is None:
 
 conta = None
 if st.session_state.get("conta_id"):
-    conta = contas.conta_ativa(banco, st.session_state["conta_id"])  # confere a cada tela se o acesso segue ativo
+    conta = contas.conta_ativa(banco, st.session_state["conta_id"])
     if conta is None:
         _sair()
         st.warning("Este acesso foi desativado. Procure a liderança.")
