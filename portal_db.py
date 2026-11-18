@@ -1,7 +1,15 @@
 """Banco do portal da congregação: pedidos de remarcação, dados de contato e financeiro da congregação.
 
 Não depende do Streamlit. Usa a mesma conexão (gestao_db.Banco) do sistema da liderança.
+
+Correções desta versão:
+- o valor em dinheiro passa a ser NUMERIC(12,2) no PostgreSQL (REAL perdia centavos em valores grandes);
+- o membro de um dízimo precisa pertencer à congregação do lançamento;
+- categoria e forma de pagamento são conferidas no servidor, e não só na tela;
+- novos recursos do caixa: saldo inicial, nome do caixa, lançamentos informativos e saldo anterior.
 """
+from datetime import date, datetime, timedelta
+
 import contas_congregacao
 import gestao_db as db
 
@@ -27,12 +35,20 @@ CATEGORIAS_SAIDA = (
 )
 
 FORMAS_PAGAMENTO = ("PIX", "Dinheiro", "Transferência / Cartão")
+TIPOS_LANCAMENTO = ("Entrada", "Saída", "Informativo")
+NOME_CAIXA_PADRAO = "PATRIMÔNIO DA IGREJA"
+
+
+def _num(valor):
+    """Número com 2 casas (o PostgreSQL devolve Decimal em colunas NUMERIC)."""
+    return round(float(valor or 0), 2)
 
 
 def criar_tabelas(banco):
     """Cria o que o portal precisa (pode ser chamada quantas vezes quiser)."""
     contas_congregacao.criar_tabela(banco)
     pk = "INTEGER PRIMARY KEY AUTOINCREMENT" if banco.sqlite else "SERIAL PRIMARY KEY"
+    tipo_valor = "REAL" if banco.sqlite else "NUMERIC(12,2)"
     with banco.sessao() as s:
         s.executar(f"""CREATE TABLE IF NOT EXISTS pedidos_remarcacao (
             id {pk},
@@ -62,11 +78,27 @@ def criar_tabelas(banco):
             membro_id INTEGER,
             membro_nome TEXT,
             descricao TEXT,
-            valor REAL NOT NULL,
+            valor {tipo_valor} NOT NULL,
             forma_pagamento TEXT,
             data_lancamento DATE NOT NULL,
             criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
-        s.executar("CREATE INDEX IF NOT EXISTS idx_fin_cong_data ON lancamentos_financeiros(congregacao_id, data_lancamento)")
+        s.executar("CREATE INDEX IF NOT EXISTS idx_fin_cong_data "
+                   "ON lancamentos_financeiros(congregacao_id, data_lancamento)")
+
+        s.executar(f"""CREATE TABLE IF NOT EXISTS financeiro_config (
+            congregacao_id INTEGER PRIMARY KEY REFERENCES congregacoes(id),
+            nome_caixa TEXT,
+            saldo_inicial {tipo_valor},
+            saldo_inicial_data DATE)""")
+
+        if not banco.sqlite:
+            # Bancos criados com a versão anterior tinham o valor em REAL (perde centavos).
+            tipo_atual = s.consultar(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name = 'lancamentos_financeiros' AND column_name = 'valor'")
+            if tipo_atual and tipo_atual[0]["data_type"] in ("real", "double precision"):
+                s.executar("ALTER TABLE lancamentos_financeiros ALTER COLUMN valor TYPE NUMERIC(12,2) "
+                           "USING ROUND(CAST(valor AS NUMERIC), 2)")
 
         # contato da congregação (a tabela congregacoes original não tem estes campos)
         if banco.sqlite:
@@ -169,49 +201,73 @@ def contar_pendentes(banco):
 # Financeiro da congregação
 # ---------------------------------------------------------------------------
 def criar_lancamento(banco, d):
-    """Registra uma entrada ou saída financeira da congregação."""
+    """Registra uma entrada, saída ou lançamento informativo (que não entra nas somas do caixa)."""
     tipo = d.get("tipo")
-    if tipo not in ("Entrada", "Saída"):
+    if tipo not in TIPOS_LANCAMENTO:
         raise ValueError("Tipo de lançamento inválido.")
     categoria = (d.get("categoria") or "").strip()
     if not categoria:
         raise ValueError("Selecione a categoria.")
+    if tipo == "Entrada" and categoria not in CATEGORIAS_ENTRADA:
+        raise ValueError("Categoria de entrada inválida.")
+    if tipo == "Saída" and categoria not in CATEGORIAS_SAIDA:
+        raise ValueError("Categoria de saída inválida.")
+    if tipo == "Informativo" and len(categoria) > 60:
+        raise ValueError("O nome da conta pode ter no máximo 60 caracteres.")
     try:
         valor = round(float(d.get("valor") or 0), 2)
     except (TypeError, ValueError):
         raise ValueError("Informe um valor válido.")
-    if valor <= 0:
+    if not valor > 0:  # também recusa NaN
         raise ValueError("O valor deve ser maior que zero.")
+    if valor >= 10_000_000:
+        raise ValueError("O valor informado é grande demais. Confira os centavos.")
     if not d.get("data_lancamento"):
         raise ValueError("Informe a data do lançamento.")
 
+    forma = (d.get("forma_pagamento") or "").strip() or ("PIX" if tipo != "Informativo" else "")
+    if forma and forma not in FORMAS_PAGAMENTO:
+        raise ValueError("Forma de pagamento inválida.")
+
     descricao = (d.get("descricao") or "").strip()
-    if tipo == "Saída" and len(descricao) < 3:
-        raise ValueError("Descreva o motivo ou referente da saída.")
+    if tipo in ("Saída", "Informativo") and len(descricao) < 3:
+        raise ValueError("Descreva o motivo ou referente do lançamento.")
 
     with banco.sessao() as s:
+        membro_id, membro_nome = d.get("membro_id"), db._texto(d.get("membro_nome"))
+        if membro_id is not None:
+            achado = s.consultar("SELECT nome FROM membros WHERE id = :m AND congregacao_id = :c",
+                                 {"m": membro_id, "c": d["congregacao_id"]})
+            if not achado:
+                raise ValueError("O membro escolhido não pertence a esta congregação.")
+            membro_nome = achado[0]["nome"]
         return s.inserir(
             """INSERT INTO lancamentos_financeiros (
                 congregacao_id, conta_id, tipo, categoria, membro_id, membro_nome,
                 descricao, valor, forma_pagamento, data_lancamento
             ) VALUES (:c, :conta, :t, :cat, :mid, :mnome, :desc, :val, :fp, :dt) RETURNING id""",
-            {
-                "c": d["congregacao_id"],
-                "conta": d.get("conta_id"),
-                "t": tipo,
-                "cat": categoria,
-                "mid": d.get("membro_id"),
-                "mnome": db._texto(d.get("membro_nome")),
-                "desc": db._texto(descricao),
-                "val": valor,
-                "fp": db._texto(d.get("forma_pagamento") or "PIX"),
-                "dt": db._iso(d["data_lancamento"]),
-            },
+            {"c": d["congregacao_id"], "conta": d.get("conta_id"), "t": tipo, "cat": categoria,
+             "mid": membro_id, "mnome": membro_nome, "desc": db._texto(descricao), "val": valor,
+             "fp": db._texto(forma), "dt": db._iso(d["data_lancamento"])},
         )
 
 
+def _intervalo(ano, mes):
+    """(inicio, fim_exclusivo) em ISO para um ano ou um mês; (None, None) se não houver ano."""
+    if ano is None:
+        return None, None
+    ano = int(ano)
+    if mes is None:
+        return date(ano, 1, 1).isoformat(), date(ano + 1, 1, 1).isoformat()
+    mes = int(mes)
+    inicio = date(ano, mes, 1)
+    fim = date(ano + (mes == 12), 1 if mes == 12 else mes + 1, 1)
+    return inicio.isoformat(), fim.isoformat()
+
+
 def listar_lancamentos(banco, congregacao_id, ano=None, mes=None, tipo=None):
-    """Lista os lançamentos da congregação filtrando opcionalmente por mês/ano e tipo."""
+    """Lançamentos da congregação, do mais recente para o mais antigo (filtros opcionais)."""
+    ini, fim = _intervalo(ano, mes)
     with banco.sessao() as s:
         linhas = s.consultar(
             """SELECT id, congregacao_id, conta_id, tipo, categoria, membro_id, membro_nome,
@@ -219,15 +275,24 @@ def listar_lancamentos(banco, congregacao_id, ano=None, mes=None, tipo=None):
                  FROM lancamentos_financeiros
                 WHERE congregacao_id = :cid
                   AND (:t IS NULL OR tipo = :t)
+                  AND (:ini IS NULL OR data_lancamento >= :ini)
+                  AND (:fim IS NULL OR data_lancamento < :fim)
                 ORDER BY data_lancamento DESC, id DESC""",
-            {"cid": congregacao_id, "t": tipo},
-        )
+            {"cid": congregacao_id, "t": tipo, "ini": ini, "fim": fim})
     regs = db._normalizar(linhas, ["data_lancamento"])
-    if ano is not None:
-        regs = [r for r in regs if r["data_lancamento"] and r["data_lancamento"].year == int(ano)]
-    if mes is not None:
+    for r in regs:
+        r["valor"] = _num(r["valor"])
+    if ano is None and mes is not None:  # mês sem ano: filtra aqui
         regs = [r for r in regs if r["data_lancamento"] and r["data_lancamento"].month == int(mes)]
     return regs
+
+
+def anos_com_lancamentos(banco, congregacao_id):
+    with banco.sessao() as s:
+        linhas = s.consultar("SELECT DISTINCT data_lancamento FROM lancamentos_financeiros "
+                             "WHERE congregacao_id = :c", {"c": congregacao_id})
+    datas = db._normalizar(linhas, ["data_lancamento"])
+    return sorted({l["data_lancamento"].year for l in datas if l["data_lancamento"]})
 
 
 def excluir_lancamento(banco, lancamento_id, congregacao_id):
@@ -238,3 +303,47 @@ def excluir_lancamento(banco, lancamento_id, congregacao_id):
             {"i": lancamento_id, "c": congregacao_id},
         )
     return n > 0
+
+
+# ---------------------------------------------------------------------------
+# Configuração e saldos do caixa
+# ---------------------------------------------------------------------------
+def obter_config_financeiro(banco, congregacao_id):
+    with banco.sessao() as s:
+        linhas = s.consultar("SELECT nome_caixa, saldo_inicial, saldo_inicial_data FROM financeiro_config "
+                             "WHERE congregacao_id = :c", {"c": congregacao_id})
+    if not linhas:
+        return {"nome_caixa": NOME_CAIXA_PADRAO, "saldo_inicial": 0.0, "saldo_inicial_data": None}
+    l = db._normalizar(linhas, ["saldo_inicial_data"])[0]
+    return {"nome_caixa": l["nome_caixa"] or NOME_CAIXA_PADRAO, "saldo_inicial": _num(l["saldo_inicial"]),
+            "saldo_inicial_data": l["saldo_inicial_data"]}
+
+
+def salvar_config_financeiro(banco, congregacao_id, nome_caixa, saldo_inicial, saldo_inicial_data):
+    nome = (nome_caixa or "").strip() or NOME_CAIXA_PADRAO
+    if len(nome) > 60:
+        raise ValueError("O nome do caixa pode ter no máximo 60 caracteres.")
+    try:
+        saldo = round(float(saldo_inicial or 0), 2)
+    except (TypeError, ValueError):
+        raise ValueError("Informe um saldo inicial válido.")
+    with banco.sessao() as s:
+        s.executar("DELETE FROM financeiro_config WHERE congregacao_id = :c", {"c": congregacao_id})
+        s.executar("INSERT INTO financeiro_config (congregacao_id, nome_caixa, saldo_inicial, saldo_inicial_data) "
+                   "VALUES (:c, :n, :s, :d)",
+                   {"c": congregacao_id, "n": nome, "s": saldo, "d": db._iso(saldo_inicial_data)})
+
+
+def saldo_antes_de(banco, congregacao_id, data_limite):
+    """Saldo do caixa no início de `data_limite`: saldo inicial + entradas - saídas anteriores a essa data.
+    Se o saldo inicial tem data, só contam os lançamentos a partir dela."""
+    cfg = obter_config_financeiro(banco, congregacao_id)
+    with banco.sessao() as s:
+        linhas = s.consultar(
+            """SELECT tipo, SUM(valor) AS total FROM lancamentos_financeiros
+                WHERE congregacao_id = :c AND data_lancamento < :fim
+                  AND (:ini IS NULL OR data_lancamento >= :ini) AND tipo IN ('Entrada', 'Saída')
+                GROUP BY tipo""",
+            {"c": congregacao_id, "fim": db._iso(data_limite), "ini": db._iso(cfg["saldo_inicial_data"])})
+    totais = {l["tipo"]: _num(l["total"]) for l in linhas}
+    return round(cfg["saldo_inicial"] + totais.get("Entrada", 0.0) - totais.get("Saída", 0.0), 2)
