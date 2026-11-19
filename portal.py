@@ -17,6 +17,8 @@ import streamlit as st
 import agenda
 import contas_congregacao as contas
 import ficha_membro
+import financeiro
+import financeiro_db
 import gestao
 import gestao_db as db
 import portal_db
@@ -359,6 +361,7 @@ ROTULO_STATUS = {"pendente": "Aguardando a liderança", "aprovado": "Aprovado",
 def _preparar(_banco):
     portal_db.criar_tabelas(_banco)
     ficha_membro.criar_tabela(_banco)
+    financeiro_db.criar_tabelas(_banco)
     return True
 
 
@@ -769,7 +772,7 @@ def _ficha_entrada(banco, conta, tipo):
 # Financeiro
 # ---------------------------------------------------------------------------
 def pagina_financeiro(banco, conta):
-    st.info("Módulo financeiro em desenvolvimento. Em breve você poderá registar entradas, saídas e relatórios aqui.")
+    financeiro.pagina_financeiro(banco, conta)
 
 
 # ---------------------------------------------------------------------------
