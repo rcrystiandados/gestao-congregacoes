@@ -314,6 +314,62 @@ ESTILO = """<style>
 """
 st.markdown(ESTILO, unsafe_allow_html=True)
 
+# Logo como botão "Início" e faixa de seções logo abaixo da barra azul (sem menu em cascata).
+ESTILO_MENU = """<style>
+    /* o próprio logo é o botão Início */
+    div.st-key-nav .st-key-nav_logo div.stButton > button,
+    div.st-key-nav div.st-key-nav_logo > button {
+        width: 124px !important; min-width: 124px !important; height: 44px !important; min-height: 44px !important;
+        padding: 4px 10px !important; margin-right: .8rem !important; border-radius: 8px !important;
+        background: #FFFFFF url("@@LOGO@@") center / contain no-repeat !important;
+        background-origin: content-box !important; border: none !important;
+    }
+    div.st-key-nav .st-key-nav_logo div.stButton > button *,
+    div.st-key-nav div.st-key-nav_logo > button * {
+        font-size: 0 !important; color: transparent !important; line-height: 0 !important;
+    }
+    div.st-key-nav .st-key-nav_logo div.stButton > button:hover,
+    div.st-key-nav div.st-key-nav_logo > button:hover {
+        background-color: #E8EEFC !important; box-shadow: 0 0 0 2px rgba(255,255,255,.55) !important;
+    }
+    div.st-key-nav .st-key-nav_logo div.stButton > button[kind="primary"],
+    div.st-key-nav .st-key-nav_logo div.stButton > button[data-testid="stBaseButton-primary"] {
+        box-shadow: 0 0 0 2px #93C5FD !important;
+    }
+
+    /* faixa de seções do item de menu ativo */
+    div.st-key-subnav {
+        display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center !important;
+        gap: .4rem !important; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px;
+        padding: .35rem .7rem; margin: -1.05rem 0 1.4rem 0; width: 100% !important;
+        box-shadow: 0 2px 8px rgba(30,58,138,.08);
+    }
+    div.st-key-subnav > div {width: auto !important; flex: 0 0 auto !important; margin: 0 !important;}
+    div.st-key-subnav [data-testid="stMarkdownContainer"] p {margin: 0 !important;}
+    div.st-key-subnav .sub-tit {
+        font-size: .78rem; font-weight: 700; color: #64748B; text-transform: uppercase;
+        letter-spacing: .04em; padding: 0 .6rem 0 .2rem; border-right: 2px solid #E2E8F0; margin-right: .3rem;
+    }
+    div.st-key-subnav div.stButton > button {
+        background: transparent !important; border: none !important; box-shadow: none !important;
+        border-radius: 999px !important; padding: .3rem 1rem !important; min-height: 2rem !important;
+        white-space: nowrap;
+    }
+    div.st-key-subnav div.stButton > button * {
+        color: var(--azul) !important; font-weight: 600 !important; font-size: .88rem !important;
+    }
+    div.st-key-subnav div.stButton > button:hover {background: #E0E7FF !important;}
+    div.st-key-subnav div.stButton > button[kind="primary"],
+    div.st-key-subnav div.stButton > button[data-testid="stBaseButton-primary"] {
+        background: var(--azul) !important;
+    }
+    div.st-key-subnav div.stButton > button[kind="primary"] *,
+    div.st-key-subnav div.stButton > button[data-testid="stBaseButton-primary"] * {
+        color: #FFFFFF !important;
+    }
+</style>""".replace("@@LOGO@@", LOGO_URL)
+st.markdown(ESTILO_MENU, unsafe_allow_html=True)
+
 # Sequência definida: INÍCIO | MEMBRESIA | FINANCEIRO | CALENDÁRIO | MINHA CONGREGAÇÃO
 MENU = [
     {"rotulo": "Início", "pagina": "Início"},
@@ -856,41 +912,42 @@ def _botao_nav(rotulo, chave, ativo, pagina, etapa, largura=False):
         _ir_para(pagina, etapa)
 
 
+def _destino(no):
+    """Página (e etapa) para onde o botão do menu leva: a própria página ou a primeira da lista."""
+    if no.get("pagina"):
+        return no["pagina"], None
+    return _destino(no["filhos"][0])
+
+
 def _barra_nav(conta):
     atual = st.session_state["pagina_portal"]
-    etapa_atual = st.session_state.get("etapa_portal")
     primeiro_nome = (conta.get("nome") or "").strip().split()[0] if conta.get("nome") else ""
 
     with st.container(key="nav"):
-        st.markdown(f'<img class="nav-logo" src="{LOGO_URL}" alt="Logo">', unsafe_allow_html=True)
+        # o logo é o botão Início
+        if st.button("Início", key="nav_logo", type="primary" if atual == "Início" else "secondary",
+                     help="Ir para o início"):
+            _ir_para("Início", None)
         for i, no in enumerate(MENU):
-            filhos = no.get("filhos")
-            ativo = _contem(no, atual)
-            if not filhos:
-                _botao_nav(no["rotulo"], f"nav_{i}", ativo, no["pagina"], None)
+            if no.get("pagina") == "Início":
                 continue
-            with st.container(key=f"ntop_{i}"):
-                st.markdown(f'<div class="nav-rot{" ativo" if ativo else ""}">{html.escape(no["rotulo"])} ▾</div>',
-                            unsafe_allow_html=True)
-                with st.container(key=f"ndrop_{i}"):
-                    for j, f in enumerate(filhos):
-                        if not f.get("filhos"):
-                            _botao_nav(f["rotulo"], f"nav_{i}_{j}", atual == f["pagina"], f["pagina"], None, True)
-                            continue
-                        with st.container(key=f"nsub_{i}_{j}"):
-                            _botao_nav(f"{f['rotulo']}  ▸", f"nav_{i}_{j}", atual == f["pagina"], f["pagina"],
-                                       None, True)
-                            with st.container(key=f"nfly_{i}_{j}"):
-                                for l, sf in enumerate(f["filhos"]):
-                                    sel = atual == sf["pagina"] and etapa_atual == sf.get("etapa")
-                                    _botao_nav(sf["rotulo"], f"nav_{i}_{j}_{l}", sel, sf["pagina"],
-                                               sf.get("etapa"), True)
+            pagina, etapa = _destino(no)
+            _botao_nav(no["rotulo"], f"nav_{i}", _contem(no, atual), pagina, etapa)
 
         st.markdown(f'<div class="nav-ola">Olá, <b>{html.escape(primeiro_nome)}</b></div>',
                     unsafe_allow_html=True)
         if st.button("SAIR", key="nav_sair"):
             _sair()
             st.rerun()
+
+    # faixa de seções do item ativo (Membresia, Minha congregação...), em vez de menu em cascata
+    grupo = next((no for no in MENU if no.get("filhos") and _contem(no, atual)), None)
+    if grupo:
+        with st.container(key="subnav"):
+            st.markdown(f'<div class="sub-tit">{html.escape(grupo["rotulo"])}</div>', unsafe_allow_html=True)
+            for j, f in enumerate(grupo["filhos"]):
+                pagina, etapa = _destino(f)
+                _botao_nav(f["rotulo"], f"sub_{j}", _contem(f, atual), pagina, etapa)
 
 
 def _rodape():
